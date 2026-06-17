@@ -3499,6 +3499,52 @@ if(new URLSearchParams(location.search).has('test')){
       }
       check('Music no longer uses oscillator composition',!String(initMusic).includes('createOscillator')&&!String(updateMusic).includes('playSound('));
       check('Settings persistence ready',typeof localStorage!=='undefined');
+      // ---- Enhancement self-tests (README priority items) ----
+      check('Crafting has 25+ recipes',RECIPES.length>=25,'recipes='+RECIPES.length);
+      check('Five food items defined',FOOD_TYPES.size>=5,'foods='+FOOD_TYPES.size);
+      check('Tool tiers speed up mining',(()=>{const oh=player.hotbar.slice(),os=player.selectedSlot,oi=player.inventory[29];player.hotbar[0]=29;player.selectedSlot=0;player.inventory[29]=1;const m=toolMiningMultiplier();player.hotbar=oh;player.selectedSlot=os;if(oi===undefined)delete player.inventory[29];else player.inventory[29]=oi;return m===4})());
+      check('Eating food restores hunger',(()=>{const oh=player.hotbar.slice(),os=player.selectedSlot,oinv={...player.inventory},ohun=player.hunger;player.hotbar[0]=18;player.selectedSlot=0;player.inventory[18]=1;player.hunger=40;const ate=consumeSelected();const gained=player.hunger>40;player.hotbar=oh;player.selectedSlot=os;player.inventory=oinv;player.hunger=ohun;renderQuickbar();return ate&&gained})());
+      check('Armor reduces incoming damage',(()=>{const oi=player.inventory[35];player.inventory[35]=1;const a=playerArmor();if(oi===undefined)delete player.inventory[35];else player.inventory[35]=oi;return a>0.3})());
+      check('Floating damage numbers ready',typeof spawnDamageNumber==='function'&&Array.isArray(damageNumbers));
+      {
+        const monster=agents.find(a=>a.userData.agent.type==='monster');
+        if(monster){
+          const data=monster.userData.agent;
+          const sHp=data.hp,sMax=data.maxHp,sState=data.state,sKnock=data.knockback.clone(),sCool=player.swingCooldown,sPos=monster.position.clone(),sAwake=data.awake,sDying=data.dying,sRepel=player.monstersRepelled,sNoise=player.noise,sPlayerHp=player.hp,sHotbar=player.hotbar.slice(),sSlot=player.selectedSlot;
+          data.hp=20;data.maxHp=20;data.dying=0;data.knockback.set(0,0,0);player.swingCooldown=0;player.hotbar[player.selectedSlot]=0;
+          monster.position.copy(player.pos).add(new THREE.Vector3(BLOCK*1.5,0,0));monster.updateMatrixWorld(true);
+          strikeMonster(monster);
+          const tookDmg=data.hp<20,gotKnock=data.knockback.lengthSq()>0,onCooldown=player.swingCooldown>0;
+          check('Strike deals damage, knockback and cooldown',tookDmg&&gotKnock&&onCooldown);
+          // State machine: adjacent + noisy => attacking
+          data.hp=20;data.knockback.set(0,0,0);data.awake=true;player.noise=80;
+          monster.position.copy(player.pos).add(new THREE.Vector3(BLOCK*1,0,0));
+          updateAgents(0.016);
+          check('Monster AI attacks when adjacent',data.state==='attacking',data.state);
+          // Fleeing when wounded
+          data.hp=data.maxHp*.2;updateAgents(0.016);
+          check('Wounded monster flees',data.state==='fleeing',data.state);
+          data.hp=sHp;data.maxHp=sMax;data.state=sState;data.knockback.copy(sKnock);player.swingCooldown=sCool;monster.position.copy(sPos);data.awake=sAwake;data.dying=sDying;player.monstersRepelled=sRepel;player.noise=sNoise;player.hp=sPlayerHp;player.hotbar=sHotbar;player.selectedSlot=sSlot;
+        }else{check('Strike deals damage, knockback and cooldown',false,'no monster');check('Monster AI attacks when adjacent',false,'no monster');check('Wounded monster flees',false,'no monster')}
+      }
+      check('Third-person model and toggle ready',typeof buildPlayerModel==='function'&&!!playerModel&&!!playerModel.group&&typeof updatePlayerModel==='function');
+      check('Sun glow and starfield present',!!sunGlow&&!!starField&&starField.geometry.getAttribute('position').count>1000);
+      check('Water animates with waves',(()=>{let diff=0;animateWater(0);const a=[];const attr=waterMesh.geometry.getAttribute('position');const n=Math.min(attr.count,30);for(let i=0;i<n;i++)a.push(attr.getY(i));animateWater(3.3);for(let i=0;i<n;i++)diff+=Math.abs(attr.getY(i)-a[i]);animateWater(0);return diff>1e-4})());
+      check('Placed torch emits point light',(()=>{const vx=worldToVoxel(player.pos.x)+4,vy=Math.max(2,Math.floor(player.pos.y/BLOCK)),vz=worldToVoxel(player.pos.z);const m=addPlacedFoliage(vx,vy,vz,5);const hasLight=!!m.userData.torchLight&&m.userData.torchLight.isPointLight;scene.remove(m);const idx=placedFoliage.indexOf(m);if(idx!==-1)placedFoliage.splice(idx,1);return hasLight})());
+      check('Sound FX functions ready',typeof playFootstep==='function'&&typeof playSplashSound==='function'&&typeof playPickupSound==='function'&&typeof playMineSound==='function');
+      check('Inventory drop and sort ready',typeof dropSelectedStack==='function'&&typeof autoSortInventory==='function');
+      check('Auto-sort packs items by type',(()=>{const oh=player.hotbar.slice(),os=player.selectedSlot,oinv={...player.inventory};player.inventory={5:1,2:1};player.hotbar=[0,0,0,0,0,0,0,0,0];autoSortInventory();const sorted=player.hotbar[0]===2&&player.hotbar[1]===5;player.hotbar=oh;player.selectedSlot=os;player.inventory=oinv;renderQuickbar();return sorted})());
+      check('Save/load round-trips player state',(()=>{if(typeof saveGame!=='function'||typeof loadGame!=='function')return false;const oHun=player.hunger;player.hunger=42;const saved=saveGame();player.hunger=10;const loaded=loadGame();const restored=Math.round(player.hunger)===42;player.hunger=oHun;try{localStorage.removeItem(SAVE_KEY)}catch(e){}return saved&&loaded&&restored})());
+      check('Loading screen present',!!ui.loadingOverlay&&!!ui.loadingBar&&typeof setLoadingProgress==='function');
+      {
+        showDialogue('Test','msg',[{label:'A',action:hideDialogue},{label:'B',action:hideDialogue}]);
+        const btns=ui.choices.querySelectorAll('button[data-key]');
+        const hasKeys=btns.length===2&&btns[0].dataset.key==='1';
+        flashDialogueKey('1');
+        const flashed=ui.choices.querySelector('button[data-key="1"]').classList.contains('keyactive');
+        hideDialogue();
+        check('Dialogue choices are keyboard-addressable',hasKeys&&flashed);
+      }
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
     ui.qaPanel.hidden=false;
