@@ -979,6 +979,8 @@ const player={
   mining:null,
   primaryHeld:false,
   swingCooldown:0,
+  footstepTimer:0,
+  wasInWater:false,
   trusted:new Set(),
   talked:new Set(),
   waystones:new Set(),
@@ -1092,9 +1094,24 @@ function makeItemIconDataURL(type){
     // wings
     x.fillStyle='rgba(255,255,200,.5)';x.beginPath();x.ellipse(8,16,6,3,.2,0,Math.PI*2);x.fill();
     x.fillStyle='rgba(255,255,200,.5)';x.beginPath();x.ellipse(24,16,6,3,-.2,0,Math.PI*2);x.fill()
-  } else if(type===15||type===16||type===17||type===18||type===19){ // food/special
-    x.fillStyle='rgba(255,255,255,.2)';x.beginPath();x.arc(16,14,10,0,Math.PI*2);x.fill();
-    x.fillStyle='rgba(255,255,255,.3)';x.beginPath();x.arc(14,12,3,0,Math.PI*2);x.fill()
+  } else if(FOOD_TYPES.has(type)||type===15||type===32){ // food / potion
+    if(type===32){ // potion bottle
+      x.fillStyle='#caa';x.fillRect(14,3,4,5);
+      x.fillStyle=col;x.beginPath();x.moveTo(11,12);x.lineTo(21,12);x.lineTo(23,28);x.lineTo(9,28);x.closePath();x.fill();
+      x.fillStyle='rgba(255,255,255,.35)';x.fillRect(12,14,3,11)
+    } else {
+      x.fillStyle='rgba(0,0,0,.18)';x.beginPath();x.arc(17,18,11,0,Math.PI*2);x.fill();
+      x.fillStyle=col;x.beginPath();x.arc(16,16,10,0,Math.PI*2);x.fill();
+      x.fillStyle='rgba(255,255,255,.32)';x.beginPath();x.arc(13,13,3.5,0,Math.PI*2);x.fill()
+    }
+  } else if(TOOL_TYPES.has(type)){ // pickaxe / axe
+    x.strokeStyle='#6a4a2a';x.lineWidth=3;x.beginPath();x.moveTo(16,30);x.lineTo(18,6);x.stroke(); // handle
+    x.fillStyle=col;
+    if(BT[type]?.tool==='axe'){x.beginPath();x.moveTo(18,5);x.quadraticCurveTo(30,7,27,18);x.quadraticCurveTo(20,15,18,12);x.closePath();x.fill()}
+    else{x.beginPath();x.moveTo(6,9);x.quadraticCurveTo(18,3,30,9);x.lineTo(28,13);x.quadraticCurveTo(18,8,8,13);x.closePath();x.fill()}
+    x.fillStyle='rgba(255,255,255,.25)';x.fillRect(15,8,2,20)
+  } else if(type===33){ // stick
+    x.strokeStyle=col;x.lineWidth=4;x.beginPath();x.moveTo(10,28);x.lineTo(22,6);x.stroke()
   } else { // default: blocks with 3D edge effect
     x.fillStyle='rgba(0,0,0,.15)';x.fillRect(0,0,12,32);
     x.fillStyle='rgba(255,255,255,.12)';x.fillRect(20,0,12,32);
@@ -1117,10 +1134,27 @@ function slotHTML(type,count){
 }
 
 function addToInventory(type,count=1){
+  const wasNew=!(player.inventory[type]>0);
   player.inventory[type]=(player.inventory[type]||0)+count;
   if(!player.hotbar.includes(type)){
     const emptySlot=player.hotbar.indexOf(0);
     if(emptySlot!==-1)player.hotbar[emptySlot]=type;
+  }
+  playPickupSound();
+  if(wasNew)discoverRecipes(type);
+}
+
+// Recipe discovery: the first time you acquire an item, unlock recipes that use it.
+const unlockedRecipes=new Set();
+let recipeDiscoveryReady=false;
+function discoverRecipes(type){
+  if(!recipeDiscoveryReady)return; // skip during initial setup
+  for(const r of RECIPES){
+    if(unlockedRecipes.has(r.name))continue;
+    if(Object.keys(r.ingredients).map(Number).includes(Number(type))){
+      unlockedRecipes.add(r.name);
+      toast('Recipe discovered: '+r.name);
+    }
   }
 }
 
@@ -1968,6 +2002,50 @@ function playSound(freq,duration,type='sine',vol=0.15){
 
 function playPlaceSound(){playSound(400,0.1,'sine',0.1)}
 function playHitSound(){playSound(200,0.2,'sawtooth',0.12)}
+// Item pickup: short rising two-tone
+function playPickupSound(){playSound(620,0.08,'sine',0.09);setTimeout(()=>playSound(880,0.1,'sine',0.08),55)}
+// Footstep: short filtered noise burst (pitch varies with surface)
+function playFootstep(inWater=false){
+  if(!audioCtx)return;
+  const dur=inWater?0.16:0.09;
+  const buffer=audioCtx.createBuffer(1,Math.floor(audioCtx.sampleRate*dur),audioCtx.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*(1-i/data.length);
+  const src=audioCtx.createBufferSource();src.buffer=buffer;
+  const filter=audioCtx.createBiquadFilter();
+  filter.type=inWater?'lowpass':'bandpass';
+  filter.frequency.value=inWater?500:(220+Math.random()*120);
+  filter.Q.value=inWater?1:2.2;
+  const gain=audioCtx.createGain();gain.gain.value=inWater?0.06:0.045;
+  gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur);
+  src.connect(filter);filter.connect(gain);gain.connect(masterGain);
+  src.start();src.stop(audioCtx.currentTime+dur);
+}
+// Water splash: bright noise sweep when entering/exiting water
+function playSplashSound(){
+  if(!audioCtx)return;
+  const dur=0.35;
+  const buffer=audioCtx.createBuffer(1,Math.floor(audioCtx.sampleRate*dur),audioCtx.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*(1-i/data.length);
+  const src=audioCtx.createBufferSource();src.buffer=buffer;
+  const filter=audioCtx.createBiquadFilter();filter.type='highpass';filter.frequency.value=900;
+  filter.frequency.linearRampToValueAtTime(2600,audioCtx.currentTime+dur);
+  const gain=audioCtx.createGain();gain.gain.value=0.12;
+  gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur);
+  src.connect(filter);filter.connect(gain);gain.connect(masterGain);
+  src.start();src.stop(audioCtx.currentTime+dur);
+}
+// Pleasant block chipping sound (replaces the old retro tones)
+function playMineSound(){
+  if(!audioCtx)return;
+  const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+  osc.type='triangle';osc.frequency.value=180+Math.random()*40;
+  osc.frequency.exponentialRampToValueAtTime(110,audioCtx.currentTime+0.08);
+  gain.gain.value=0.07;gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.09);
+  osc.connect(gain);gain.connect(masterGain);
+  osc.start();osc.stop(audioCtx.currentTime+0.09);
+}
 function playAmbient(){
   if(!audioCtx)return;
   const t=dayTime*100;
@@ -2351,9 +2429,12 @@ function startMining(){
   triggerHandSwing(.7);
 }
 
+let miningSoundTimer=0;
 function updateMining(dt){
   if(!player.primaryHeld||!player.mining){ui.mineMeter.hidden=true;hideBreakOverlay();return}
   player.mining.progress+=dt;
+  miningSoundTimer-=dt;
+  if(miningSoundTimer<=0){playMineSound();miningSoundTimer=.2}
   const pct=Math.min(100,(player.mining.progress/player.mining.duration)*100);
   updateBreakOverlay(player.mining.pos,pct/100);
   if(player.mining.progress>=player.mining.duration){
@@ -2363,7 +2444,6 @@ function updateMining(dt){
     spawnParticle(new THREE.Vector3((wx+.5)*BLOCK,(wy+.5)*BLOCK,(wz+.5)*BLOCK),BT[minedType]?.color||0xf2c96d,18,4);
     addToInventory(minedType);
     player.noise=Math.min(100,player.noise+2+player.mining.duration);
-    playPlaceSound();
     // Remove any placed foliage sprite at this position
     removePlacedFoliageAt(wx,wy,wz);
     player.mining=null;
@@ -2427,7 +2507,40 @@ function removePlacedFoliageAt(wx,wy,wz){
   }
 }
 
+function consumeSelected(){
+  const type=player.hotbar[player.selectedSlot];
+  if(!type||(player.inventory[type]||0)<=0)return false;
+  const bt=BT[type];
+  if(!bt)return false;
+  if(bt.food){
+    player.hunger=Math.min(100,player.hunger+bt.food);
+    if(bt.heal)player.hp=Math.min(100,player.hp+bt.heal);
+    if(bt.warm)player.temperature=Math.min(100,player.temperature+bt.warm);
+    player.inventory[type]--;
+    playPickupSound();
+    spawnParticle(camera.position.clone().add(new THREE.Vector3(0,-BLOCK*.2,0)),bt.color||0xf2c96d,8,1.6);
+    toast('Ate '+bt.name.replace(/_/g,' '));
+    if((player.inventory[type]||0)<=0){const slot=player.hotbar.indexOf(type);if(slot!==-1)player.hotbar[slot]=0}
+    renderQuickbar();renderInventory();
+    return true;
+  }
+  if(bt.potion){
+    player.hp=Math.min(100,player.hp+bt.potion);
+    player.resolve=Math.min(100,player.resolve+15);
+    player.inventory[type]--;
+    playPickupSound();
+    spawnParticle(camera.position.clone().add(new THREE.Vector3(0,-BLOCK*.2,0)),0xff5577,12,2);
+    toast('Drank '+bt.name.replace(/_/g,' '));
+    if((player.inventory[type]||0)<=0){const slot=player.hotbar.indexOf(type);if(slot!==-1)player.hotbar[slot]=0}
+    renderQuickbar();renderInventory();
+    return true;
+  }
+  return false;
+}
+
 function placeSelected(){
+  // Food and potions are consumed instead of placed.
+  if(consumeSelected())return;
   const hit=raycast(5);
   if(!hit||!hit.face)return;
   const type=player.hotbar[player.selectedSlot];
@@ -2694,17 +2807,26 @@ function updatePlayer(dt){
   
    if(moving){
      move.normalize();
-     const speed=movementSpeed(inWater,sprint);
+     const coldFactor=player.temperature<20?.8:1; // 20% slower when freezing
+     const speed=movementSpeed(inWater,sprint)*coldFactor;
      const dx=move.x*speed*dt,dz=move.z*speed*dt;
      const fromY=Math.max(player.pos.y,groundYAt(player.pos.x,player.pos.z));
      if((canStandAt(player.pos.x+dx,player.pos.z,fromY)||inWater) && !wouldHitCeiling(player.pos.x+dx,player.pos.z,player.pos.y))player.pos.x+=dx;
      if((canStandAt(player.pos.x,player.pos.z+dz,fromY)||inWater) && !wouldHitCeiling(player.pos.x,player.pos.z+dz,player.pos.y))player.pos.z+=dz;
      player.noise=Math.min(100,player.noise+dt*(inWater?.3:sprint?2.5:.8));
      player.resolve=Math.max(0,player.resolve-dt*(sprint?.8:.2));
+     // Footsteps cadence scales with speed; only when grounded (or swimming)
+     if(player.grounded||inWater){
+       player.footstepTimer-=dt;
+       if(player.footstepTimer<=0){playFootstep(inWater);player.footstepTimer=inWater?.5:(sprint?.28:.42)}
+     }
    } else {
      player.noise=Math.max(0,player.noise-dt*1.5);
      player.resolve=Math.min(100,player.resolve+dt*1.8);
+     player.footstepTimer=0;
    }
+   // Water splash on entering/exiting water
+   if(inWater!==player.wasInWater){playSplashSound();spawnParticle(new THREE.Vector3(player.pos.x,waterSurfaceAt(player.pos.x,player.pos.z),player.pos.z),0x9fd6e6,12,3);player.wasInWater=inWater}
    
    // Gravity
     if(inWater){
@@ -2765,21 +2887,36 @@ function updatePlayer(dt){
   player.pos.z=THREE.MathUtils.clamp(player.pos.z,-maxW,maxW);
 }
 
+// Is the player warmed by a nearby torch (placed within 3 blocks, or holding one)?
+function nearWarmth(){
+  const reach=3*BLOCK;
+  for(const f of placedFoliage){
+    if(f.userData.placedType!==5)continue;
+    if(f.position.distanceTo(camera.position)<reach)return true;
+  }
+  const held=player.hotbar[player.selectedSlot];
+  if(held===5&&(player.inventory[5]||0)>0)return true; // holding a lit torch
+  return false;
+}
+
 function updateSurvival(dt){
   const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
   const sprint=moving&&keys.has('shift');
   const inWater=isPlayerInWater();
-  player.hunger=Math.max(0,player.hunger-dt*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
+  // Hunger drains ~3x faster than before so food matters.
+  player.hunger=Math.max(0,player.hunger-dt*3*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
 
   const sunY=Math.sin(dayTime*Math.PI*2);
   const altitude=Math.max(0,(player.pos.y-BLOCK*12)/(MAX_Y*BLOCK));
   const weatherCold=weather.type==='mirrorRain'?12:weather.type==='softFog'?6:0;
-  const targetTemp=THREE.MathUtils.clamp(88-(sunY<0?18:0)-(inWater?28:0)-altitude*18-weatherCold*weather.intensity,12,100);
+  let targetTemp=THREE.MathUtils.clamp(88-(sunY<0?18:0)-(inWater?28:0)-altitude*18-weatherCold*weather.intensity,12,100);
+  // Torch warmth pulls temperature up quickly when nearby.
+  if(nearWarmth()){player.temperature=Math.min(100,player.temperature+dt*15);targetTemp=Math.max(targetTemp,72)}
   player.temperature+= (targetTemp-player.temperature)*dt*.045;
 
-  if(player.hunger<=0)player.hp=Math.max(0,player.hp-dt*1.4);
+  if(player.hunger<=0)player.hp=Math.max(0,player.hp-dt*1.6);
   else if(player.hunger<18)player.resolve=Math.max(0,player.resolve-dt*.9);
-  if(player.temperature<28)player.hp=Math.max(0,player.hp-dt*1.1);
+  if(player.temperature<20)player.hp=Math.max(0,player.hp-dt*1.4); // freezing damage
   else if(player.temperature<45)player.resolve=Math.max(0,player.resolve-dt*.8);
   if(player.hunger>65&&player.temperature>55&&player.hp<100)player.hp=Math.min(100,player.hp+dt*.35);
 }
@@ -2888,6 +3025,7 @@ function init(){
     initMusic();
   },{once:true});
   
+  recipeDiscoveryReady=true;
   animate();
 }
 
