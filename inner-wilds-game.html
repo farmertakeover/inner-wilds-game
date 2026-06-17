@@ -298,12 +298,19 @@ let blockAtlasTexture=null,blockAtlasRows=1;
 function drawBlockTexture(ctx,type,spec,ox,oy){
   const color=new THREE.Color(spec.color||0x888888);
   ctx.fillStyle='#'+color.getHexString();ctx.fillRect(ox,oy,ATLAS_TILE,ATLAS_TILE);
+  // Directional sky light: brighter toward the top, darker toward the base,
+  // giving every block a sense of vertical depth before per-type detail.
+  const lightGrad=ctx.createLinearGradient(ox,oy,ox,oy+ATLAS_TILE);
+  lightGrad.addColorStop(0,'rgba(255,255,255,.16)');
+  lightGrad.addColorStop(.5,'rgba(255,255,255,0)');
+  lightGrad.addColorStop(1,'rgba(0,0,0,.2)');
+  ctx.fillStyle=lightGrad;ctx.fillRect(ox,oy,ATLAS_TILE,ATLAS_TILE);
   ctx.strokeStyle='rgba(0,0,0,.18)';ctx.lineWidth=2;ctx.strokeRect(ox+6,oy+6,ATLAS_TILE-12,ATLAS_TILE-12);
   ctx.strokeStyle='rgba(255,255,255,.1)';ctx.strokeRect(ox+9,oy+9,ATLAS_TILE-18,ATLAS_TILE-18);
-  for(let i=0;i<520;i++){
+  for(let i=0;i<760;i++){
     const n=hashNoise(type*17+i*.37,type*11+i*.19),m=hashNoise(type*7+i*.23,type*23+i*.41);
     const shade=type===2||type===10?120+n*90:type===5?65+n*55:170+n*70;
-    ctx.fillStyle=`rgba(${shade},${shade},${shade},${.025+n*.065})`;
+    ctx.fillStyle=`rgba(${shade},${shade},${shade},${.03+n*.085})`;
     ctx.fillRect(ox+m*ATLAS_TILE,oy+n*ATLAS_TILE,1+m*4,1+n*4);
   }
   if(spec.name?.includes('stone')||spec.name==='cobble'||spec.name==='iron_ore'){
@@ -357,6 +364,24 @@ function drawBlockTexture(ctx,type,spec,ox,oy){
     grad.addColorStop(0,'rgba(255,255,255,.34)');grad.addColorStop(.5,'rgba(255,255,255,.06)');grad.addColorStop(1,'rgba(0,0,0,.18)');
     ctx.fillStyle=grad;ctx.fillRect(ox,oy,ATLAS_TILE,ATLAS_TILE);
   }
+  // Beveled edges + ambient occlusion frame for chunky, sculpted depth.
+  applyBlockDepth(ctx,ox,oy);
+}
+
+// Adds a raised-bevel highlight on the top/left, a recessed shadow on the
+// bottom/right, and a darkened ambient-occlusion border around every tile.
+function applyBlockDepth(ctx,ox,oy){
+  const T=ATLAS_TILE,b=10;
+  // Top + left highlight (light hits these faces).
+  ctx.fillStyle='rgba(255,255,255,.14)';
+  ctx.fillRect(ox,oy,T,b);ctx.fillRect(ox,oy,b,T);
+  // Bottom + right shadow (faces turned away from light).
+  ctx.fillStyle='rgba(0,0,0,.26)';
+  ctx.fillRect(ox,oy+T-b,T,b);ctx.fillRect(ox+T-b,oy,b,T);
+  // Soft inner ambient occlusion so the cube core sits proud of its edges.
+  const ao=ctx.createRadialGradient(ox+T*.5,oy+T*.5,T*.28,ox+T*.5,oy+T*.5,T*.72);
+  ao.addColorStop(0,'rgba(0,0,0,0)');ao.addColorStop(1,'rgba(0,0,0,.22)');
+  ctx.fillStyle=ao;ctx.fillRect(ox,oy,T,T);
 }
 
 function getBlockAtlasTexture(){
@@ -806,10 +831,10 @@ function triggerHandSwing(power=1){if(handRig)handRig.swing=Math.max(handRig.swi
 // Third-person avatar (shown when the V key toggles thirdPerson on).
 let playerModel=null;
 function buildPlayerModel(){
-  const model=humanoid(0x2f6f6a);
+  const model=humanoid(0x3a6f5e);
   model.visible=false;
   // Held item in the right hand, mirrors updateHandItem() in spirit.
-  const itemGroup=new THREE.Group();itemGroup.position.set(.92,1.7,.4);
+  const itemGroup=new THREE.Group();itemGroup.position.set(.66,1.5,.62);
   const itemBox=new THREE.Mesh(new THREE.BoxGeometry(.42,.42,.42),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
   itemGroup.add(itemBox);
   model.add(itemGroup);
@@ -828,13 +853,14 @@ function updatePlayerModel(dt){
   const t=performance.now()*.008;
   const stride=moving&&player.grounded?Math.sin(t):0;
   const ud=playerModel.userData;
+  const type=player.hotbar[player.selectedSlot];
+  const has=type&&type!==0&&(player.inventory[type]||0)>0&&BT[type];
   if(ud.lArm)ud.lArm.rotation.x=-stride*.4;
-  if(ud.rArm)ud.rArm.rotation.x=stride*.4;
+  // Raise the right arm forward when holding an item so it presents the tool.
+  if(ud.rArm)ud.rArm.rotation.x=(has?-1.0:0)+stride*.4;
   if(ud.lLeg)ud.lLeg.rotation.x=stride*.5;
   if(ud.rLeg)ud.rLeg.rotation.x=-stride*.5;
   // Reflect the held item color/visibility.
-  const type=player.hotbar[player.selectedSlot];
-  const has=type&&type!==0&&(player.inventory[type]||0)>0&&BT[type];
   ud.itemGroup.visible=Boolean(has);
   if(has)ud.itemBox.material.color.setHex(BT[type].color);
 }
@@ -1640,10 +1666,28 @@ function humanoid(color=0x365c66,backpack=false,isCartographer=false){
     const scarf=new THREE.Mesh(new THREE.BoxGeometry(1.18,.12,.12),modelMat(0xd97d8d,{emissive:0x28070d}));scarf.position.set(0,2.86,.34);g.add(scarf);
   }
   
-  const lArm=addOutlined(g,new THREE.Mesh(new THREE.BoxGeometry(.26,1.28,.26),mats.skin));lArm.position.set(-.76,2.2,.02);
-  const rArm=addOutlined(g,new THREE.Mesh(new THREE.BoxGeometry(.26,1.28,.26),mats.skin));rArm.position.set(.76,2.2,.02);
-  const lLeg=addOutlined(g,new THREE.Mesh(new THREE.BoxGeometry(.34,1.25,.34),mats.boot));lLeg.position.set(-.27,.72,0);
-  const rLeg=addOutlined(g,new THREE.Mesh(new THREE.BoxGeometry(.34,1.25,.34),mats.boot));rLeg.position.set(.27,.72,0);
+  // Neck bridges the torso and head for a more humanoid silhouette.
+  const neck=addOutlined(g,new THREE.Mesh(new THREE.CylinderGeometry(.2,.24,.3,12),mats.skin),1.02);neck.position.set(0,2.9,.02);
+  addOutlined(g,new THREE.Mesh(new THREE.BoxGeometry(1.36,.3,.62),tunic),1.02).position.set(0,2.82,.02); // shoulders
+  const sleeveMat=isCartographer?modelMat(0x2d4a6b):modelMat(color);
+  // Arms pivot at the shoulder (so they swing naturally) and carry a hand.
+  const makeArm=side=>{
+    const pivot=new THREE.Group();pivot.position.set(side*.66,2.78,.02);
+    const upper=addOutlined(pivot,new THREE.Mesh(new THREE.BoxGeometry(.27,.72,.28),sleeveMat),1.03);upper.position.y=-.35;
+    addOutlined(pivot,new THREE.Mesh(new THREE.BoxGeometry(.235,.64,.245),mats.skin),1.03).position.y=-.97; // forearm
+    addOutlined(pivot,new THREE.Mesh(new THREE.BoxGeometry(.28,.28,.24),mats.skin),1.03).position.y=-1.34; // hand
+    g.add(pivot);return pivot;
+  };
+  const lArm=makeArm(-1),rArm=makeArm(1);
+  // Legs pivot at the hip and carry feet.
+  const makeLeg=side=>{
+    const pivot=new THREE.Group();pivot.position.set(side*.27,1.5,0);
+    addOutlined(pivot,new THREE.Mesh(new THREE.BoxGeometry(.37,.76,.37),modelMat(isCartographer?0x223a52:0x2f3a45)),1.025).position.y=-.42; // thigh
+    addOutlined(pivot,new THREE.Mesh(new THREE.BoxGeometry(.33,.66,.33),mats.boot),1.025).position.y=-1.06; // shin
+    addOutlined(pivot,new THREE.Mesh(new THREE.BoxGeometry(.37,.2,.58),mats.boot),1.02).position.set(0,-1.4,.12); // foot
+    g.add(pivot);return pivot;
+  };
+  const lLeg=makeLeg(-1),rLeg=makeLeg(1);
   if(backpack){
     const pack=addOutlined(g,new THREE.Mesh(new THREE.BoxGeometry(.78,1.08,.34),mats.pack),1.025);pack.position.set(0,2.18,-.48);
     const bedroll=new THREE.Mesh(new THREE.CylinderGeometry(.16,.16,.86,12,12),modelMat(0x7d5b42));bedroll.position.set(0,2.86,-.7);bedroll.rotation.z=Math.PI/2;g.add(bedroll);
