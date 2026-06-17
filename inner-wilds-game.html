@@ -1303,6 +1303,7 @@ const RECIPES=[
   {name:'Glass Bottle',result:55,count:1,ingredients:{4:1},shapeless:true},
   {name:'Health Tonic',result:56,count:1,ingredients:{55:1,14:1},shapeless:true},
   {name:'Warming Draught',result:57,count:1,ingredients:{55:1,7:1},shapeless:true},
+  {name:'Glow Apple',result:58,count:1,ingredients:{3:1,6:1},shapeless:true},
 ];
 
 // Extended block types for crafted items
@@ -1337,6 +1338,7 @@ BT[54]={name:'flatbread',color:0xe0c074,rough:.85,food:18};
 BT[55]={name:'glass_bottle',color:0x9fd8e0,rough:.3};
 BT[56]={name:'health_tonic',color:0xe24a6a,rough:.4,heal:40};
 BT[57]={name:'warming_draught',color:0xe39044,rough:.4,warm:40};
+BT[58]={name:'glow_apple',color:0xe6a23a,rough:.6,food:30};
 
 // Blocks that may be set into the voxel grid via right-click placement.
 const PLACEABLE_BLOCKS=new Set([1,2,3,4,6,7,9,10,11,12]);
@@ -2497,10 +2499,33 @@ function removePlacedFoliageAt(wx,wy,wz){
   }
 }
 
+function isConsumable(type){const bt=BT[type];return Boolean(bt&&(bt.food||bt.heal||bt.warm))}
+function consumeItem(type){
+  const bt=BT[type];
+  if(!bt||(player.inventory[type]||0)<=0)return false;
+  let used=false;
+  if(bt.food){player.hunger=Math.min(100,player.hunger+bt.food);used=true}
+  if(bt.heal){player.hp=Math.min(100,player.hp+bt.heal);used=true}
+  if(bt.warm){player.temperature=Math.min(100,player.temperature+bt.warm);used=true}
+  if(!used)return false;
+  player.inventory[type]--;
+  toast((bt.food?'Ate ':'Drank ')+bt.name.replace(/_/g,' '));
+  if(typeof playItemPickupSound==='function')playItemPickupSound();
+  spawnParticle(camera.position.clone().add(new THREE.Vector3(0,-BLOCK*.4,0)),bt.color,6,1.4);
+  renderQuickbar();updateMeters();
+  return true;
+}
+
 function placeSelected(){
+  const type=player.hotbar[player.selectedSlot];
+  // Right-click eats food / drinks potions when one is selected.
+  if(isConsumable(type)){
+    if((player.inventory[type]||0)>0)consumeItem(type);
+    else toast('Nothing to consume.');
+    return;
+  }
   const hit=raycast(5);
   if(!hit||!hit.face)return;
-  const type=player.hotbar[player.selectedSlot];
   if(!type||(player.inventory[type]||0)<=0){toast('Nothing to place. Mine blocks first.');return}
   if(LIQUID_TYPES.has(String(hit.blockType))){toast('Need a solid face to place.');return}
   const placePos=hit.blockPos.clone();
@@ -2794,7 +2819,8 @@ function updatePlayer(dt){
   
    if(moving){
      move.normalize();
-     const speed=movementSpeed(inWater,sprint);
+     // Freezing players (<20°) move 20% slower.
+     const speed=movementSpeed(inWater,sprint)*(isFreezing()?0.8:1);
      const dx=move.x*speed*dt,dz=move.z*speed*dt;
      const fromY=Math.max(player.pos.y,groundYAt(player.pos.x,player.pos.z));
      if((canStandAt(player.pos.x+dx,player.pos.z,fromY)||inWater) && !wouldHitCeiling(player.pos.x+dx,player.pos.z,player.pos.y))player.pos.x+=dx;
@@ -2869,20 +2895,34 @@ function updateSurvival(dt){
   const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
   const sprint=moving&&keys.has('shift');
   const inWater=isPlayerInWater();
-  player.hunger=Math.max(0,player.hunger-dt*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
+  // Hunger drains ~3x faster than the original tuning so food actually matters.
+  player.hunger=Math.max(0,player.hunger-dt*3*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
 
   const sunY=Math.sin(dayTime*Math.PI*2);
   const altitude=Math.max(0,(player.pos.y-BLOCK*12)/(MAX_Y*BLOCK));
   const weatherCold=weather.type==='mirrorRain'?12:weather.type==='softFog'?6:0;
   const targetTemp=THREE.MathUtils.clamp(88-(sunY<0?18:0)-(inWater?28:0)-altitude*18-weatherCold*weather.intensity,12,100);
   player.temperature+= (targetTemp-player.temperature)*dt*.045;
+  // Standing within 3 blocks of a placed torch warms you quickly.
+  if(nearWarmth(player.pos))player.temperature=Math.min(100,player.temperature+dt*15);
 
   if(player.hunger<=0)player.hp=Math.max(0,player.hp-dt*1.4);
   else if(player.hunger<18)player.resolve=Math.max(0,player.resolve-dt*.9);
-  if(player.temperature<28)player.hp=Math.max(0,player.hp-dt*1.1);
+  if(player.temperature<20)player.hp=Math.max(0,player.hp-dt*1.6);
+  else if(player.temperature<28)player.hp=Math.max(0,player.hp-dt*1.1);
   else if(player.temperature<45)player.resolve=Math.max(0,player.resolve-dt*.8);
   if(player.hunger>65&&player.temperature>55&&player.hp<100)player.hp=Math.min(100,player.hp+dt*.35);
 }
+
+// True when a placed torch is within 3 blocks of the given position.
+function nearWarmth(pos){
+  for(const f of placedFoliage){
+    if(f.userData.placedType!==5)continue;
+    if(f.position.distanceTo(pos)<3*BLOCK)return true;
+  }
+  return false;
+}
+function isFreezing(){return player.temperature<20}
 
 const THIRD_PERSON_DIST=BLOCK*4.2,THIRD_PERSON_HEIGHT=BLOCK*1.4;
 function updateCamera(){
@@ -3253,6 +3293,26 @@ if(new URLSearchParams(location.search).has('test')){
         const after=recipeKnown(idx);
         if(!had)player.discovered.delete(idx);else player.discovered.add(idx);
         check('Recipe discovery unlocks recipes when holding items',idx>=0&&!before&&after);
+      }
+      check('Five or more food items defined',Object.keys(BT).filter(t=>BT[t].food).length>=5);
+      {
+        const oldH=player.hunger,oldInv=player.inventory[50];
+        player.hunger=10;player.inventory[50]=2;
+        const ate=consumeItem(50);
+        const pass=ate&&player.hunger>10&&player.inventory[50]===1;
+        player.hunger=oldH;if(oldInv===undefined)delete player.inventory[50];else player.inventory[50]=oldInv;renderQuickbar();
+        check('Eating food restores hunger',pass);
+      }
+      {
+        const oldT=player.temperature;player.temperature=10;const f=isFreezing();player.temperature=oldT;
+        check('Freezing state triggers below 20 degrees',f===true);
+      }
+      {
+        const vx=worldToVoxel(player.pos.x),vy=Math.max(2,Math.floor(player.pos.y/BLOCK)),vz=worldToVoxel(player.pos.z);
+        const torch=addPlacedFoliage(vx,vy,vz,5);
+        const warm=nearWarmth(player.pos);
+        scene.remove(torch);const ti=placedFoliage.indexOf(torch);if(ti!==-1)placedFoliage.splice(ti,1);
+        check('Nearby torch provides warmth',warm);
       }
       {
         const m=agents.find(a=>a.userData.agent.type==='monster');
