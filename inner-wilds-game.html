@@ -32,6 +32,7 @@ canvas{display:block}
 .dialogue .choices{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .dialogue button,.start button,.notes button,.crafting-panel button,.settings-panel button{border:1px solid rgba(242,201,109,.45);border-radius:999px;padding:8px 13px;color:#201408;background:linear-gradient(180deg,#ffe3a4,#d99750);box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .dialogue button:hover,.start button:hover,.notes button:hover{filter:brightness(1.1)}
+.dialogue button.keyactive{outline:2px solid var(--teal);transform:scale(1.06);filter:brightness(1.2)}
 .banner{position:absolute;top:42%;left:50%;width:min(680px,calc(100vw - 24px));padding:16px 20px;transform:translate(-50%,-50%) scale(.96);border:1px solid rgba(242,201,109,.55);border-radius:6px 24px 6px 24px;background:linear-gradient(135deg,rgba(14,14,24,.94),rgba(42,24,62,.86));box-shadow:0 20px 80px rgba(0,0,0,.5),0 0 40px rgba(154,121,227,.25);opacity:0;text-align:center;transition:opacity .25s,transform .25s}
 .banner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 .banner h2{margin:0 0 6px;color:var(--gold);font-family:Georgia,serif;font-size:clamp(1.4rem,3.5vw,3rem)}
@@ -108,6 +109,13 @@ canvas{display:block}
 .inventory-hotbar{display:flex;gap:6px;justify-content:center;padding:12px 0;border-top:1px solid var(--line)}
 .inventory-hotbar .slot{width:48px;height:48px;cursor:pointer}
 
+.loading{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(circle at 50% 35%,rgba(38,30,62,.9),rgba(7,9,15,.98) 60%);transition:opacity .5s}
+.loading.hidden{opacity:0;pointer-events:none}
+.loading-card{width:min(420px,90vw);text-align:center;padding:26px;border-radius:18px;border:1px solid var(--line);background:rgba(10,13,20,.7)}
+.loading-card h2{margin:0 0 8px;color:var(--gold);font-family:Georgia,serif;font-size:2rem}
+.loading-card p{margin:0 0 16px;color:var(--muted);font-size:.9rem}
+.loading-bar{height:10px;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05)}
+.loading-bar span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--gold));transition:width .25s}
 .qa-results{position:absolute;left:50%;bottom:80px;width:min(680px,calc(100vw - 24px));transform:translateX(-50%);padding:12px 14px;border-radius:12px;pointer-events:none;font-size:.85rem;line-height:1.4}
 .qa-results strong{color:var(--gold)}
 .qa-results .pass{color:#9ff3d6}
@@ -119,6 +127,13 @@ canvas{display:block}
 </head>
 <body>
 <div id="app"></div>
+<div class="loading" id="loadingOverlay">
+  <div class="loading-card">
+    <h2>Inner Wilds</h2>
+    <p id="loadingStatus">Waking the island\u2026</p>
+    <div class="loading-bar"><span id="loadingFill"></span></div>
+  </div>
+</div>
 <div class="hud">
   <div class="top">
     <section class="brand glass" id="brand"><h1>Inner Wilds</h1><p>Mine, craft, fight, and survive a living procedural world.</p></section>
@@ -179,7 +194,8 @@ canvas{display:block}
     <h2>Inventory</h2>
     <div class="inventory-grid" id="inventoryGrid"></div>
     <div class="inventory-hotbar" id="inventoryHotbar"></div>
-    <button id="closeInventory">Close</button>
+    <p class="setting-help">Shift+click an item to move it between bag and hotbar. Press Q to drop the held stack.</p>
+    <div class="menu-actions"><button id="sortInventory">Auto-Sort</button><button id="closeInventory">Close</button></div>
   </section>
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
 </div>
@@ -1134,8 +1150,17 @@ const ui={
   recipeList:document.getElementById('recipeList'),closeCrafting:document.getElementById('closeCrafting'),
   inventoryPanel:document.getElementById('inventoryPanel'),inventoryGrid:document.getElementById('inventoryGrid'),
   inventoryHotbar:document.getElementById('inventoryHotbar'),closeInventory:document.getElementById('closeInventory'),
+  sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
+  loadingOverlay:document.getElementById('loadingOverlay'),loadingStatus:document.getElementById('loadingStatus'),loadingFill:document.getElementById('loadingFill'),
 };
+
+function setLoadingProgress(pct,status){
+  if(ui.loadingFill)ui.loadingFill.style.width=THREE.MathUtils.clamp(pct,0,100)+'%';
+  if(status&&ui.loadingStatus)ui.loadingStatus.textContent=status;
+}
+function hideLoading(){if(ui.loadingOverlay)ui.loadingOverlay.classList.add('hidden')}
+const nextFrame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 
 function toast(text){
   const el=document.createElement('div');el.className='toast';el.textContent=text;
@@ -1155,6 +1180,7 @@ function showDialogue(speaker,text,choices=[{label:'Continue',action:hideDialogu
     const c=choices[i];
     const b=document.createElement('button');
     b.textContent=(i+1)+'. '+c.label;
+    b.dataset.key=String(i+1);
     b.addEventListener('click',c.action);
     ui.choices.appendChild(b);
   }
@@ -1478,7 +1504,10 @@ function renderInventory(){
     if(type>0&&count>0){
       div.innerHTML=slotHTML(type,count);
     }
-    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar();renderInventory()});
+    div.addEventListener('click',e=>{
+      if(e.shiftKey&&type>0){removeFromHotbar(i);return}
+      player.selectedSlot=i;renderQuickbar();renderInventory();
+    });
     ui.inventoryHotbar.appendChild(div);
   }
   
@@ -1492,6 +1521,38 @@ function renderInventory(){
     div.addEventListener('click',()=>{moveToHotbar(type)});
     ui.inventoryGrid.appendChild(div);
   }
+}
+
+function removeFromHotbar(i){
+  // Remove the item from the hotbar slot; it stays in the bag (inventory grid)
+  player.hotbar[i]=0;
+  renderQuickbar();renderInventory();
+}
+
+function dropSelected(){
+  const type=player.hotbar[player.selectedSlot];
+  if(!type||(player.inventory[type]||0)<=0)return;
+  const count=player.inventory[type];
+  player.inventory[type]=0;
+  player.hotbar[player.selectedSlot]=0;
+  // Visual: scatter particles in front of the player
+  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  const dropPos=camera.position.clone().add(fwd.multiplyScalar(BLOCK));
+  spawnParticle(dropPos,BT[type]?.color||0xcccccc,10,2.5);
+  toast('Dropped '+count+'x '+(BT[type]?.name?.replace(/_/g,' ')||'item'));
+  renderQuickbar();
+  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
+}
+
+function autoSortInventory(){
+  // Collect every owned item type, then refill the hotbar densely in id order
+  const owned=Object.keys(player.inventory).filter(t=>player.inventory[t]>0).map(Number).sort((a,b)=>a-b);
+  player.hotbar=[0,0,0,0,0,0,0,0,0];
+  let slot=0;
+  for(const t of owned){if(slot>=9)break;player.hotbar[slot++]=t}
+  player.selectedSlot=0;
+  renderQuickbar();renderInventory();
+  toast('Inventory sorted');
 }
 
 function moveToHotbar(type){
@@ -2236,12 +2297,18 @@ window.addEventListener('keydown',e=>{
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
   if(k==='v'){thirdPerson=!thirdPerson;toast(thirdPerson?'Third-person view':'First-person view')}
+  if(k==='q'&&state.started){dropSelected()}
   if(k==='tab'){toggleInventory()}
   if(k>='1'&&k<='9'){
     // Dialogue choices take priority over hotbar when dialogue is open
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')){
       const idx=parseInt(k)-1;
-      if(idx<currentDialogueChoices.length){currentDialogueChoices[idx].action();return}
+      if(idx<currentDialogueChoices.length){
+        const btn=ui.choices.querySelector(`button[data-key="${k}"]`);
+        const act=currentDialogueChoices[idx].action;
+        if(btn){btn.classList.add('keyactive');setTimeout(act,90)}else act();
+        return;
+      }
     }
     player.selectedSlot=parseInt(k)-1;renderQuickbar()
   }
@@ -2697,6 +2764,53 @@ function completeQuest(id,amount=1){
 // MENU / SETTINGS
 // ============================================================
 
+// ---- Save / Load ----
+const SAVE_KEY='iw_save_v1';
+function saveGame(){
+  try{
+    const data={
+      pos:{x:player.pos.x,y:player.pos.y,z:player.pos.z},
+      inventory:player.inventory,
+      hotbar:player.hotbar,
+      selectedSlot:player.selectedSlot,
+      hp:player.hp,hunger:player.hunger,temperature:player.temperature,resolve:player.resolve,
+      monstersRepelled:player.monstersRepelled,
+      trusted:[...player.trusted],waystones:[...player.waystones],
+      quests:quests.map(q=>({id:q.id,progress:q.progress})),
+      placedFoliage:placedFoliage.map(f=>({x:f.userData.blockPos.x,y:f.userData.blockPos.y,z:f.userData.blockPos.z,type:f.userData.placedType})),
+      dayTime,
+    };
+    localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+  }catch(e){/* storage may be unavailable */}
+}
+function loadGame(){
+  let raw;try{raw=localStorage.getItem(SAVE_KEY)}catch(e){return false}
+  if(!raw)return false;
+  let data;try{data=JSON.parse(raw)}catch(e){return false}
+  if(!data)return false;
+  if(data.pos)player.pos.set(data.pos.x,data.pos.y,data.pos.z);
+  if(data.inventory)player.inventory=data.inventory;
+  if(Array.isArray(data.hotbar))player.hotbar=data.hotbar;
+  if(typeof data.selectedSlot==='number')player.selectedSlot=data.selectedSlot;
+  if(typeof data.hp==='number')player.hp=data.hp;
+  if(typeof data.hunger==='number')player.hunger=data.hunger;
+  if(typeof data.temperature==='number')player.temperature=data.temperature;
+  if(typeof data.resolve==='number')player.resolve=data.resolve;
+  if(typeof data.monstersRepelled==='number')player.monstersRepelled=data.monstersRepelled;
+  if(Array.isArray(data.trusted))player.trusted=new Set(data.trusted);
+  if(Array.isArray(data.waystones))player.waystones=new Set(data.waystones);
+  if(Array.isArray(data.quests))for(const sq of data.quests){const q=quests.find(x=>x.id===sq.id);if(q)q.progress=sq.progress}
+  if(typeof data.dayTime==='number')dayTime=data.dayTime;
+  if(Array.isArray(data.placedFoliage)){
+    for(const f of placedFoliage.slice())scene.remove(f);
+    placedFoliage.length=0;
+    for(const pf of data.placedFoliage)addPlacedFoliage(pf.x,pf.y,pf.z,pf.type);
+  }
+  renderQuickbar();renderQuests();updateMeters();
+  toast('Save loaded');
+  return true;
+}
+
 function showMenuPanel(p){ui.menuMain.hidden=p!=='main';ui.menuSettings.hidden=p!=='settings'}
 function openMainMenu(){ui.start.classList.remove('hidden');showMenuPanel('main');exitGamePointerLock()}
 function closeMenuToGame(){
@@ -2713,6 +2827,7 @@ ui.menuNotesBtn.addEventListener('click',()=>{ui.notes.classList.add('open');exi
 ui.closeNotes.addEventListener('click',()=>{ui.notes.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
 ui.closeCrafting.addEventListener('click',()=>{showCrafting=false;ui.craftingPanel.classList.remove('open');if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()});
 ui.closeInventory.addEventListener('click',()=>{ui.inventoryPanel.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
+ui.sortInventory.addEventListener('click',autoSortInventory);
 ui.sensitivitySlider.addEventListener('input',e=>setMouseSensitivity(e.target.value));
 ui.renderDistSlider.addEventListener('input',e=>{
   renderDistance=parseInt(e.target.value);
@@ -2896,6 +3011,11 @@ function updatePlayer(dt){
     } else {
       player.pos.y=newY;
     }
+    // Safety pass: at very high downward speed, raycast straight down so we never tunnel
+    if(player.velY<-20){
+      const safeFloor=floorYAt(player.pos.x,player.pos.z,oldY+BLOCK);
+      if(safeFloor>0&&player.pos.y<safeFloor){player.pos.y=safeFloor;player.velY=0;player.grounded=true;coyoteTime=COYOTE_TIME_MAX}
+    }
     
     const ground=floorYAt(player.pos.x,player.pos.z,player.pos.y+BLOCK*.45);
     const ceiling=ceilingYAt(player.pos.x,player.pos.z,player.pos.y+.01);
@@ -3024,7 +3144,8 @@ function animate(){
 // ============================================================
 // INIT
 // ============================================================
-function init(){
+async function init(){
+  const isTest=new URLSearchParams(location.search).has('test');
   // Load settings
   const sv=localStorage.getItem('iw_sens');
   if(sv)setMouseSensitivity(parseInt(sv));
@@ -3034,14 +3155,20 @@ function init(){
   if(mv){setMusicVolume(parseInt(mv));ui.musicSlider.value=mv;ui.musicValue.textContent=mv+'%'}
   const sfxV=localStorage.getItem('iw_sfxvol');
   if(sfxV){setSfxVolume(parseInt(sfxV));ui.sfxSlider.value=sfxV;ui.sfxValue.textContent=sfxV+'%'}
-  
+
+  if(!isTest){setLoadingProgress(8,'Carving terrain\u2026');await nextFrame()}
+
   // Generate initial chunks
   rebuildVisibleChunks(true);
-  
+
+  if(!isTest){setLoadingProgress(45,'Filling the shoreline\u2026');await nextFrame()}
+
   // Build water
   buildWaterMesh();
   buildVoidFloor();
-  
+
+  if(!isTest){setLoadingProgress(62,'Planting the wilds\u2026');await nextFrame()}
+
   // Build ambient
   buildAmbient();
   buildWeather();
@@ -3049,7 +3176,9 @@ function init(){
   buildFirstPersonHands();
   buildPlayerModel();
   buildCelestialBodies();
-  
+
+  if(!isTest){setLoadingProgress(82,'Stirring the guardians\u2026');await nextFrame()}
+
   // Place agents
   addAgent('npc','The Cartographer',8,6,{isCartographer:true});
   addAgent('animal','Glass Elk',-18,14);
@@ -3063,6 +3192,14 @@ function init(){
   
   // Find spawn
   player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
+
+  // Restore a previous save (skip in QA test mode so tests start clean)
+  if(!isTest){
+    loadGame();
+    rebuildVisibleChunks(true);
+    setInterval(()=>{if(state.started)saveGame()},30000);
+    window.addEventListener('beforeunload',()=>{if(state.started)saveGame()});
+  }
   
   renderQuickbar();
   renderQuests();
@@ -3074,6 +3211,9 @@ function init(){
     if(!audioCtx)initAudio();
     initMusic();
   },{once:true});
+
+  if(!isTest){setLoadingProgress(100,'Ready');await nextFrame();hideLoading()}
+  else hideLoading();
   
   animate();
 }
