@@ -26,10 +26,13 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | Tab | Toggle inventory |
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
+| Q | Drop the selected stack |
 | M | Main menu |
 | V | Toggle 1st/3rd person |
 | Enter | Advance dialogue |
 | Esc | Release pointer lock |
+
+Right-click while holding food/potions eats or drinks them.
 
 ---
 
@@ -344,12 +347,46 @@ Recover the Island Chart from the Cartographer by restoring the waystones. Decid
 - **Firefly illumination**: Increased to 4.5 intensity, range 16
 - **Arm redesign**: Bottom corners, smaller, pointing upward, depthTest removed
 
+### Session 3 (Enhancement Prompt Pass)
+Worked through the "Priority Issues to Fix" list from the enhancement prompt above. All changes verified against the embedded `?test` suite (now 83 self-tests, all passing) via the new headless runner `tests/run-selftest.js`.
+
+- **#1 Hands** — enlarged arm/hand geometry and set `depthTest:false` so they never clip into world geometry.
+- **#2 Third person** — added `buildPlayerModel()` and a `V` toggle; camera orbits behind/above the player, hands hide, the avatar holds the selected item.
+- **#3 Reliable hits** — `raycast()` refreshes agent world matrices; combat reach widened to 6 blocks.
+- **#4 Torch light** — placed torches emit a warm `PointLight`.
+- **#5 Celestial** — additive sun-glow sprite plus a 2000-point starfield that fades in at night.
+- **#7 Water** — sin-based vertex wave animation (`updateWater`) with stored base positions.
+- **#9 Combat depth** — swing cooldown (mining blocked mid-swing), knockback, floating damage numbers, shrink-then-burst death FX.
+- **#10 Survival** — hunger drains ~3× faster, 5 edible foods + potions (right-click to consume), freezing (<20°) slows movement 20% and damages, placed torches restore warmth within 3 blocks.
+- **#11 Crafting** — 27 recipes including pickaxes/axes/armor/food/potions, plus recipe discovery toasts (basics known from the start).
+- **#12 Inventory** — `Q` drops the selected stack, shift-click moves items between bag and hotbar, an auto-sort button, stack counts in hotbar slots.
+- **#13 Tool tiers** — per-tool mining-speed multipliers (hand 1× → iron 4×) and tier-scaled weapon damage.
+- **#14 Sound** — filtered-noise footsteps (gait-timed), water-crossing splash, rising item-pickup tone, softer chipping mine sound.
+- **#15 Monster AI** — IDLE → CHASING → ATTACKING → FLEEING state machine; chase, contact-damage, and flee at low HP.
+- **#17 Save/load** — full session snapshot (inventory, hotbar, meters, quests, placed foliage, discoveries, position) with 30s autosave and load-on-init.
+- **#18 Loading screen** — fullscreen overlay with a progress bar shown during world generation, fades out on first frame.
+- **#19 Tunneling** — second-pass downward ground clamp when `velY < -20`.
+- **#20 Dialogue** — choice buttons expose `data-key` and highlight when their number key is pressed.
+
+Not changed: #6 (sky is already a dynamic day/night gradient; starfield added on top), #8 (crosshair already present), #16 (chunk rebuild already boundary-gated), #21 (kept HTMLAudioElement music loops to preserve the locked CC0 self-tests).
+
 ---
 
 ## Testing
 
 ### Manual QA
 Open the game with `?test` URL parameter to run the embedded self-test suite. Results appear in a green/red panel.
+
+### Headless self-test runner
+`tests/run-selftest.js` loads the game with `?test` in headless Chrome and prints the pass/fail summary (exits non-zero on any failure or JS error):
+
+```bash
+npm install puppeteer-core
+node tests/run-selftest.js                       # uses local inner-wilds-game.html
+CHROME_PATH=/path/to/chrome node tests/run-selftest.js
+```
+
+Headless WebGL requires SwiftShader; the runner already passes `--use-angle=swiftshader --use-gl=angle --enable-unsafe-swiftshader`.
 
 ### Automated Playthrough
 ```bash
@@ -378,6 +415,7 @@ inner-wilds-game/
 ├── .gitignore
 └── tests/
     ├── README.md                 # Test setup documentation
+    ├── run-selftest.js           # Headless ?test self-test runner (puppeteer-core)
     ├── test-qa-visual.js         # QA visual test runner
     ├── test-auto-play.js         # HTTP playthrough script
     ├── test-auto.js              # Utility for auto tests
