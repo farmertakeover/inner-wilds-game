@@ -177,9 +177,13 @@ canvas{display:block}
   </section>
   <section class="inventory-panel glass" id="inventoryPanel" role="dialog" aria-modal="true">
     <h2>Inventory</h2>
+    <p class="setting-help" style="margin-bottom:8px">Shift-click to move items between bag and hotbar. Q drops the selected stack.</p>
     <div class="inventory-grid" id="inventoryGrid"></div>
     <div class="inventory-hotbar" id="inventoryHotbar"></div>
-    <button id="closeInventory">Close</button>
+    <div class="menu-actions" style="justify-content:space-between">
+      <button id="sortInventory" class="secondary">Auto-sort</button>
+      <button id="closeInventory">Close</button>
+    </div>
   </section>
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
 </div>
@@ -1125,6 +1129,7 @@ const ui={
   recipeList:document.getElementById('recipeList'),closeCrafting:document.getElementById('closeCrafting'),
   inventoryPanel:document.getElementById('inventoryPanel'),inventoryGrid:document.getElementById('inventoryGrid'),
   inventoryHotbar:document.getElementById('inventoryHotbar'),closeInventory:document.getElementById('closeInventory'),
+  sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
 };
 
@@ -1445,7 +1450,11 @@ function renderInventory(){
     if(type>0&&count>0){
       div.innerHTML=slotHTML(type,count);
     }
-    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar();renderInventory()});
+    div.addEventListener('click',e=>{
+      // Shift-click pulls the item off the hotbar into the bag; plain click selects.
+      if(e.shiftKey&&type>0){quickMoveFromHotbar(i);return}
+      player.selectedSlot=i;renderQuickbar();renderInventory();discoverRecipesFor(type);
+    });
     ui.inventoryHotbar.appendChild(div);
   }
   
@@ -1456,12 +1465,14 @@ function renderInventory(){
     const div=document.createElement('div');
     div.className='slot'+(count<=0?' empty':'');
     div.innerHTML=slotHTML(type,count);
+    // Plain or shift-click both bring the item onto the hotbar.
     div.addEventListener('click',()=>{moveToHotbar(type)});
     ui.inventoryGrid.appendChild(div);
   }
 }
 
 function moveToHotbar(type){
+  if(player.hotbar.includes(type)){renderQuickbar();renderInventory();return}
   const emptySlot=player.hotbar.indexOf(0);
   if(emptySlot!==-1){
     player.hotbar[emptySlot]=type;
@@ -1470,6 +1481,37 @@ function moveToHotbar(type){
   }
   renderQuickbar();
   renderInventory();
+}
+
+// Remove an item from a hotbar slot (it stays in the bag/inventory).
+function quickMoveFromHotbar(slotIndex){
+  player.hotbar[slotIndex]=0;
+  renderQuickbar();
+  renderInventory();
+}
+
+function dropSelectedStack(){
+  const slot=player.selectedSlot,type=player.hotbar[slot];
+  if(!type||(player.inventory[type]||0)<=0){toast('Nothing to drop.');return}
+  const count=player.inventory[type];
+  player.inventory[type]=0;
+  player.hotbar[slot]=0;
+  spawnParticle(camera.position.clone(),BT[type]?.color||0xffffff,10,2.2);
+  toast('Dropped '+count+'x '+(BT[type]?.name||'item').replace(/_/g,' '));
+  renderQuickbar();
+  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
+}
+
+// Sort owned items by id and repack the hotbar.
+function autoSortHotbar(){
+  const types=Object.keys(player.inventory).filter(t=>player.inventory[t]>0).map(Number).sort((a,b)=>a-b);
+  const newHotbar=[0,0,0,0,0,0,0,0,0];
+  for(let i=0;i<Math.min(9,types.length);i++)newHotbar[i]=types[i];
+  player.hotbar=newHotbar;
+  player.selectedSlot=THREE.MathUtils.clamp(player.selectedSlot,0,8);
+  renderQuickbar();
+  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
+  toast('Inventory sorted');
 }
 
 function toggleInventory(){
@@ -2206,6 +2248,7 @@ window.addEventListener('keydown',e=>{
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
   if(k==='v'){toggleThirdPerson()}
   if(k==='tab'){toggleInventory()}
+  if(k==='q'){dropSelectedStack()}
   if(k>='1'&&k<='9'){
     // Dialogue choices take priority over hotbar when dialogue is open
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')){
@@ -2695,6 +2738,7 @@ ui.menuNotesBtn.addEventListener('click',()=>{ui.notes.classList.add('open');exi
 ui.closeNotes.addEventListener('click',()=>{ui.notes.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
 ui.closeCrafting.addEventListener('click',()=>{showCrafting=false;ui.craftingPanel.classList.remove('open');if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()});
 ui.closeInventory.addEventListener('click',()=>{ui.inventoryPanel.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
+ui.sortInventory.addEventListener('click',autoSortHotbar);
 ui.sensitivitySlider.addEventListener('input',e=>setMouseSensitivity(e.target.value));
 ui.renderDistSlider.addEventListener('input',e=>{
   renderDistance=parseInt(e.target.value);
@@ -3313,6 +3357,18 @@ if(new URLSearchParams(location.search).has('test')){
         const warm=nearWarmth(player.pos);
         scene.remove(torch);const ti=placedFoliage.indexOf(torch);if(ti!==-1)placedFoliage.splice(ti,1);
         check('Nearby torch provides warmth',warm);
+      }
+      {
+        const oldHotbar=player.hotbar.slice(),oldSlot=player.selectedSlot,oldInv={...player.inventory};
+        player.hotbar=[2,1,0,0,0,0,0,0,0];player.selectedSlot=0;player.inventory={2:5,1:3};
+        dropSelectedStack();
+        const dropped=(player.inventory[2]||0)===0&&player.hotbar[0]===0;
+        player.hotbar[1]=1;quickMoveFromHotbar(1);const moved=player.hotbar[1]===0;
+        player.inventory={5:2,1:4,2:1};player.hotbar=[0,0,0,0,0,0,0,0,0];
+        autoSortHotbar();
+        const sorted=player.hotbar[0]===1&&player.hotbar[1]===2&&player.hotbar[2]===5;
+        player.hotbar=oldHotbar;player.selectedSlot=oldSlot;player.inventory=oldInv;renderQuickbar();
+        check('Inventory drop, quick-move, and auto-sort work',dropped&&moved&&sorted);
       }
       {
         const m=agents.find(a=>a.userData.agent.type==='monster');
