@@ -3326,23 +3326,25 @@ function animate(){
   renderFrame();
 }
 
-// Two-pass render: world first, then the first-person hands overlay on a
+// Render the full scene, then (in first person) redraw just the hands on a
 // cleared depth buffer so nothing in the world can bleed through the arms.
 function renderFrame(){
+  camera.layers.enableAll();
+  renderer.render(scene,camera);
   const overlay=handRig&&handRig.group.visible&&!thirdPerson;
   if(overlay){
-    camera.layers.set(0);
-    renderer.render(scene,camera);
+    // Drop the sky background for the overlay pass, otherwise the second
+    // render repaints it over the world we just drew.
+    const bg=scene.background;
+    scene.background=null;
     renderer.autoClear=false;
     renderer.clearDepth();
     camera.layers.set(VIEWMODEL_LAYER);
     renderer.render(scene,camera);
     renderer.autoClear=true;
-  } else {
-    camera.layers.set(0);camera.layers.enable(VIEWMODEL_LAYER);
-    renderer.render(scene,camera);
+    scene.background=bg;
+    camera.layers.enableAll();
   }
-  camera.layers.set(0);camera.layers.enable(VIEWMODEL_LAYER);
 }
 
 // ============================================================
