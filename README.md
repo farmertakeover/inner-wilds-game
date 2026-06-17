@@ -26,12 +26,13 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | Tab | Toggle inventory |
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
-| Q | Drop held stack |
-| Right-click (food) | Eat/drink the selected consumable |
+| Q | Drop the selected stack |
 | M | Main menu |
 | V | Toggle 1st/3rd person |
 | Enter | Advance dialogue |
 | Esc | Release pointer lock |
+
+Right-click while holding food/potions eats or drinks them.
 
 ---
 
@@ -347,28 +348,27 @@ Recover the Island Chart from the Cartographer by restoring the waystones. Decid
 - **Arm redesign**: Bottom corners, smaller, pointing upward, depthTest removed
 
 ### Session 3 (Enhancement Prompt Pass)
-Worked through the "Priority Issues to Fix" list from the enhancement prompt. Self-test suite grown from 61 to 74 checks, all passing, with a clean automated playthrough (0 page errors).
+Worked through the "Priority Issues to Fix" list from the enhancement prompt above. All changes verified against the embedded `?test` suite (now 83 self-tests, all passing) via the new headless runner `tests/run-selftest.js`.
 
-- **#1 Hands** — enlarged arms (0.16) and hands (0.12), `depthTest:false` + `renderOrder` so they never z-fight the world
-- **#2 Third person** — `buildPlayerModel()` humanoid, `V` toggles `thirdPerson`; camera pulls behind/above and looks at the player, hands hidden, model holds the selected item and walk-animates
-- **#3 Combat raycast** — `scene.updateMatrixWorld(true)` before agent intersection, widened combat reach to 6 voxels
-- **#4 Torch light** — placed torches (`addPlacedFoliage`) now parent a warm `PointLight`
-- **#5 Celestial** — additive sun glow Sprite + 2000-point starfield that fades in at night
-- **#6 Sky** — dawn/day/dusk/night color ramp lerped into `scene.background`/fog
-- **#7 Water** — sin-based vertex wave animation via `updateWaterMesh()` (base positions cached)
-- **#9 Combat depth** — `player.swingCooldown` (blocks mining mid-swing), knockback impulse, floating damage-number sprites, monster death scale tween + particle burst
-- **#10 Survival** — hunger drains ~3× faster, freezing (<20°) slows movement 20%, placed torches radiate warmth, edible food/potions
-- **#11 Crafting** — expanded to 27 recipes (tools, weapons, food, potions, armor, materials) with first-time recipe-discovery toasts
-- **#12 Inventory** — `Q` drops the held stack, Shift+click moves items between bag/hotbar, Auto-Sort button, hotbar stack counts
-- **#13 Tool tiers** — `miningMultiplier()` (hand 1× → iron pickaxe 4×) and per-tool combat damage
-- **#14 Sound** — footsteps (filtered noise), water-entry splash, pickup chime, gentle mining chip
-- **#15 Monster AI** — IDLE → CHASING → ATTACKING → FLEEING state machine; flees under 30% HP, contact damage reduced by worn armor
-- **#17 Save/Load** — full state (inventory, hotbar, meters, quests, placed foliage, pos, time) to localStorage, autosave every 30s + on unload, restored on init
-- **#18 Loading screen** — progress overlay driven through the async init sequence
-- **#19 Tunneling** — extra downward floor clamp when falling faster than 20 u/s
-- **#20 Dialogue** — choice buttons carry `data-key` and flash when the matching number key is pressed
+- **#1 Hands** — enlarged arm/hand geometry and set `depthTest:false` so they never clip into world geometry.
+- **#2 Third person** — added `buildPlayerModel()` and a `V` toggle; camera orbits behind/above the player, hands hide, the avatar holds the selected item.
+- **#3 Reliable hits** — `raycast()` refreshes agent world matrices; combat reach widened to 6 blocks.
+- **#4 Torch light** — placed torches emit a warm `PointLight`.
+- **#5 Celestial** — additive sun-glow sprite plus a 2000-point starfield that fades in at night.
+- **#7 Water** — sin-based vertex wave animation (`updateWater`) with stored base positions.
+- **#9 Combat depth** — swing cooldown (mining blocked mid-swing), knockback, floating damage numbers, shrink-then-burst death FX.
+- **#10 Survival** — hunger drains ~3× faster, 5 edible foods + potions (right-click to consume), freezing (<20°) slows movement 20% and damages, placed torches restore warmth within 3 blocks.
+- **#11 Crafting** — 27 recipes including pickaxes/axes/armor/food/potions, plus recipe discovery toasts (basics known from the start).
+- **#12 Inventory** — `Q` drops the selected stack, shift-click moves items between bag and hotbar, an auto-sort button, stack counts in hotbar slots.
+- **#13 Tool tiers** — per-tool mining-speed multipliers (hand 1× → iron 4×) and tier-scaled weapon damage.
+- **#14 Sound** — filtered-noise footsteps (gait-timed), water-crossing splash, rising item-pickup tone, softer chipping mine sound.
+- **#15 Monster AI** — IDLE → CHASING → ATTACKING → FLEEING state machine; chase, contact-damage, and flee at low HP.
+- **#17 Save/load** — full session snapshot (inventory, hotbar, meters, quests, placed foliage, discoveries, position) with 30s autosave and load-on-init.
+- **#18 Loading screen** — fullscreen overlay with a progress bar shown during world generation, fades out on first frame.
+- **#19 Tunneling** — second-pass downward ground clamp when `velY < -20`.
+- **#20 Dialogue** — choice buttons expose `data-key` and highlight when their number key is pressed.
 
-Already-satisfied items confirmed in place: #8 crosshair, #16 chunk-boundary-gated rebuild.
+Not changed: #6 (sky is already a dynamic day/night gradient; starfield added on top), #8 (crosshair already present), #16 (chunk rebuild already boundary-gated), #21 (kept HTMLAudioElement music loops to preserve the locked CC0 self-tests).
 
 ---
 
@@ -376,6 +376,17 @@ Already-satisfied items confirmed in place: #8 crosshair, #16 chunk-boundary-gat
 
 ### Manual QA
 Open the game with `?test` URL parameter to run the embedded self-test suite. Results appear in a green/red panel.
+
+### Headless self-test runner
+`tests/run-selftest.js` loads the game with `?test` in headless Chrome and prints the pass/fail summary (exits non-zero on any failure or JS error):
+
+```bash
+npm install puppeteer-core
+node tests/run-selftest.js                       # uses local inner-wilds-game.html
+CHROME_PATH=/path/to/chrome node tests/run-selftest.js
+```
+
+Headless WebGL requires SwiftShader; the runner already passes `--use-angle=swiftshader --use-gl=angle --enable-unsafe-swiftshader`.
 
 ### Automated Playthrough
 ```bash
@@ -404,6 +415,7 @@ inner-wilds-game/
 ├── .gitignore
 └── tests/
     ├── README.md                 # Test setup documentation
+    ├── run-selftest.js           # Headless ?test self-test runner (puppeteer-core)
     ├── test-qa-visual.js         # QA visual test runner
     ├── test-auto-play.js         # HTTP playthrough script
     ├── test-auto.js              # Utility for auto tests
