@@ -1230,6 +1230,8 @@ function addToInventory(type,count=1){
     const emptySlot=player.hotbar.indexOf(0);
     if(emptySlot!==-1)player.hotbar[emptySlot]=type;
   }
+  playPickupSound();
+  checkRecipeDiscovery();
 }
 
 function renderQuickbar(){
@@ -1267,17 +1269,6 @@ function updateMeters(){
 // ============================================================
 // CRAFTING
 // ============================================================
-const RECIPES=[
-  {name:'Planks x4',result:9,count:4,ingredients:{1:1},shapeless:true},
-  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true},
-  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,1:1},shapeless:false,pattern:[[9,0,0],[9,0,0],[1,0,0]]},
-  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,1:1},shapeless:false,pattern:[[10,0,0],[10,0,0],[1,0,0]]},
-  {name:'Iron Sword',result:22,count:1,ingredients:{12:2,1:1},shapeless:false,pattern:[[12,0,0],[12,0,0],[1,0,0]]},
-  {name:'Bow',result:23,count:1,ingredients:{9:3,1:2},shapeless:false,pattern:[[0,9,1],[9,1,9],[0,9,1]]},
-  {name:'Torch x4',result:24,count:4,ingredients:{1:1,9:1},shapeless:true},
-  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true},
-];
-
 // Extended block types for crafted items
 BT[20]={name:'wooden_sword',color:0x8b6914,rough:.8,weapon:true,damage:4};
 BT[21]={name:'stone_sword',color:0x6a6f73,rough:.75,weapon:true,damage:6};
@@ -1286,6 +1277,60 @@ BT[23]={name:'bow',color:0x8b6914,rough:.8,weapon:true,ranged:true,damage:5};
 BT[24]={name:'torch',color:0xddaa44,rough:.9,light:true,glow:0x442200};
 BT[25]={name:'butterfly',color:0xdd88ff,rough:.7};
 BT[26]={name:'firefly',color:0xffee88,rough:.45,light:true,glow:0x554400};
+// Tools (mining speed tier + combat damage)
+BT[27]={name:'wooden_pickaxe',color:0x8b6914,rough:.8,tool:'pickaxe',tier:1.5,damage:3};
+BT[28]={name:'stone_pickaxe',color:0x6a6f73,rough:.75,tool:'pickaxe',tier:2.5,damage:4};
+BT[29]={name:'iron_pickaxe',color:0xaaaacc,rough:.6,tool:'pickaxe',tier:4,damage:5};
+BT[30]={name:'wooden_axe',color:0x7a5a14,rough:.8,tool:'axe',tier:1.4,damage:3};
+BT[31]={name:'stone_axe',color:0x5a5f63,rough:.75,tool:'axe',tier:2.2,damage:4};
+BT[32]={name:'iron_axe',color:0x9a9abc,rough:.6,tool:'axe',tier:3.5,damage:6};
+BT[33]={name:'stick',color:0x9a7b3a,rough:.9};
+// Food & potions (consumed with right-click)
+BT[34]={name:'berries',color:0xc0395a,rough:.7,food:true,saturation:12};
+BT[35]={name:'bowl',color:0x8a6a3a,rough:.8};
+BT[36]={name:'stew',color:0xb5742e,rough:.7,food:true,saturation:40,heal:10};
+BT[37]={name:'bottle',color:0x9fd8e0,rough:.4};
+BT[38]={name:'health_potion',color:0xd94a61,rough:.4,drink:true,heal:45};
+BT[39]={name:'bread',color:0xc9a35a,rough:.8,food:true,saturation:25};
+BT[40]={name:'skewer',color:0x9a5a3a,rough:.8,food:true,saturation:35};
+BT[41]={name:'mushroom',color:0xb08050,rough:.8,food:true,saturation:10};
+BT[42]={name:'iron_ingot',color:0xcfcfe0,rough:.5,metal:true};
+BT[43]={name:'charcoal',color:0x2a2a2a,rough:.95};
+// Armor (passive defense while held in inventory)
+BT[44]={name:'iron_helm',color:0xaab0cc,rough:.5,armor:4};
+BT[45]={name:'iron_vest',color:0xaab0cc,rough:.5,armor:8};
+BT[46]={name:'iron_greaves',color:0xaab0cc,rough:.5,armor:6};
+BT[47]={name:'iron_boots',color:0xaab0cc,rough:.5,armor:3};
+
+const RECIPES=[
+  {name:'Planks x4',result:9,count:4,ingredients:{1:1},shapeless:true},
+  {name:'Sticks x4',result:33,count:4,ingredients:{9:1},shapeless:true},
+  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true},
+  {name:'Iron Ingot',result:42,count:1,ingredients:{12:1},shapeless:true},
+  {name:'Charcoal',result:43,count:1,ingredients:{5:1},shapeless:true},
+  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true},
+  {name:'Torch x4',result:24,count:4,ingredients:{1:1,9:1},shapeless:true},
+  {name:'Wooden Pickaxe',result:27,count:1,ingredients:{9:3,33:2},shapeless:false,pattern:[[9,9,9],[0,33,0],[0,33,0]]},
+  {name:'Stone Pickaxe',result:28,count:1,ingredients:{10:3,33:2},shapeless:false,pattern:[[10,10,10],[0,33,0],[0,33,0]]},
+  {name:'Iron Pickaxe',result:29,count:1,ingredients:{42:3,33:2},shapeless:false,pattern:[[42,42,42],[0,33,0],[0,33,0]]},
+  {name:'Wooden Axe',result:30,count:1,ingredients:{9:3,33:2},shapeless:false,pattern:[[9,9,0],[9,33,0],[0,33,0]]},
+  {name:'Stone Axe',result:31,count:1,ingredients:{10:3,33:2},shapeless:false,pattern:[[10,10,0],[10,33,0],[0,33,0]]},
+  {name:'Iron Axe',result:32,count:1,ingredients:{42:3,33:2},shapeless:false,pattern:[[42,42,0],[42,33,0],[0,33,0]]},
+  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,33:1},shapeless:false,pattern:[[9,0,0],[9,0,0],[33,0,0]]},
+  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,33:1},shapeless:false,pattern:[[10,0,0],[10,0,0],[33,0,0]]},
+  {name:'Iron Sword',result:22,count:1,ingredients:{42:2,33:1},shapeless:false,pattern:[[42,0,0],[42,0,0],[33,0,0]]},
+  {name:'Bow',result:23,count:1,ingredients:{9:3,33:1},shapeless:false,pattern:[[0,9,33],[9,0,33],[0,9,33]]},
+  {name:'Bowl',result:35,count:1,ingredients:{9:2},shapeless:true},
+  {name:'Bread',result:39,count:1,ingredients:{34:3},shapeless:true},
+  {name:'Stew',result:36,count:1,ingredients:{34:2,35:1},shapeless:true},
+  {name:'Skewer',result:40,count:1,ingredients:{41:3,33:1},shapeless:true},
+  {name:'Glass Bottle',result:37,count:1,ingredients:{4:3},shapeless:true},
+  {name:'Health Potion',result:38,count:1,ingredients:{37:1,14:1},shapeless:true},
+  {name:'Iron Helm',result:44,count:1,ingredients:{42:5},shapeless:false,pattern:[[42,42,42],[42,0,42],[0,0,0]]},
+  {name:'Iron Vest',result:45,count:1,ingredients:{42:8},shapeless:false,pattern:[[42,0,42],[42,42,42],[42,42,42]]},
+  {name:'Iron Greaves',result:46,count:1,ingredients:{42:7},shapeless:false,pattern:[[42,42,42],[42,0,42],[42,0,42]]},
+  {name:'Iron Boots',result:47,count:1,ingredients:{42:4},shapeless:false,pattern:[[0,0,0],[42,0,42],[42,0,42]]},
+];
 let selectedRecipe=RECIPES[0];
 
 function recipeCells(recipe){
@@ -1366,6 +1411,55 @@ function craftRecipe(recipe){
   renderInventory();
   if(ui.craftingPanel.classList.contains('open'))renderCrafting();
   completeQuest('craft');
+}
+
+// ============================================================
+// ITEM / GAMEPLAY HELPERS (tools, food, discovery, armor)
+// ============================================================
+function miningMultiplier(){
+  const held=BT[player.hotbar[player.selectedSlot]];
+  return held&&held.tier?held.tier:1;
+}
+function selectedDamage(){
+  const held=BT[player.hotbar[player.selectedSlot]];
+  return held&&held.damage?held.damage:2;
+}
+function playerArmorValue(){
+  let total=0;
+  for(const t of[44,45,46,47])if((player.inventory[t]||0)>0)total+=BT[t].armor;
+  return total;
+}
+function playerDefenseFactor(){return Math.min(.6,playerArmorValue()/40)}
+
+function consumeSelected(){
+  const type=player.hotbar[player.selectedSlot];
+  const bt=BT[type];
+  if(!bt||(player.inventory[type]||0)<=0)return false;
+  if(!bt.food&&!bt.drink)return false;
+  if(bt.food){
+    if(player.hunger>=100){toast('Not hungry right now.');return true}
+    player.hunger=Math.min(100,player.hunger+(bt.saturation||10));
+  }
+  if(bt.heal)player.hp=Math.min(100,player.hp+bt.heal);
+  player.inventory[type]--;
+  if((player.inventory[type]||0)<=0){
+    const slot=player.hotbar.indexOf(type);
+    if(slot!==-1)player.hotbar[slot]=0;
+  }
+  playSound(520,.18,'sine',.12);
+  spawnParticle(camera.position.clone(),bt.color,8,1.5);
+  toast(bt.drink?'Drank '+bt.name.replace(/_/g,' '):'Ate '+bt.name.replace(/_/g,' '));
+  renderQuickbar();
+  return true;
+}
+
+const discoveredRecipes=new Set();
+function checkRecipeDiscovery(){
+  for(const r of RECIPES){
+    if(discoveredRecipes.has(r.name))continue;
+    const have=Object.entries(r.ingredients).every(([t,a])=>(player.inventory[t]||0)>=a);
+    if(have){discoveredRecipes.add(r.name);if(state.started)toast('Recipe unlocked: '+r.name)}
+  }
 }
 
 // ============================================================
@@ -1977,6 +2071,30 @@ function playSound(freq,duration,type='sine',vol=0.15){
 
 function playPlaceSound(){playSound(400,0.1,'sine',0.1)}
 function playHitSound(){playSound(200,0.2,'sawtooth',0.12)}
+function playPickupSound(){if(!audioCtx)return;playSound(660,0.08,'sine',0.08);setTimeout(()=>playSound(990,0.08,'sine',0.07),50)}
+
+let noiseBuffer=null;
+function getNoiseBuffer(){
+  if(noiseBuffer||!audioCtx)return noiseBuffer;
+  const len=audioCtx.sampleRate*0.4;
+  noiseBuffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);
+  const d=noiseBuffer.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=Math.random()*2-1;
+  return noiseBuffer;
+}
+function playFilteredNoise(freq,duration,vol=0.1,q=1){
+  if(!audioCtx)return;
+  const buf=getNoiseBuffer();if(!buf)return;
+  const src=audioCtx.createBufferSource();src.buffer=buf;
+  const filt=audioCtx.createBiquadFilter();filt.type='bandpass';filt.frequency.value=freq;filt.Q.value=q;
+  const gain=audioCtx.createGain();gain.gain.value=vol;
+  gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+duration);
+  src.connect(filt);filt.connect(gain);gain.connect(masterGain);
+  src.start();src.stop(audioCtx.currentTime+duration);
+}
+function playFootstep(){playFilteredNoise(220+Math.random()*120,0.12,0.06,1.2)}
+function playSplashSound(){playFilteredNoise(900+Math.random()*400,0.28,0.09,0.7)}
+function playChipSound(){if(!audioCtx)return;playFilteredNoise(380+Math.random()*160,0.07,0.05,2.5);playSound(180+Math.random()*40,0.05,'sine',0.04)}
 function playAmbient(){
   if(!audioCtx)return;
   const t=dayTime*100;
@@ -2300,7 +2418,7 @@ function startMining(){
   const blockType=hit.blockType;
   if(LIQUID_TYPES.has(String(blockType))){toast('Water flows around the tool. Swim, not mine.');return}
   const hardness=BT[blockType]?.hardness||1;
-  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness,blockType};
+  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness/miningMultiplier(),blockType};
   ui.mineMeter.hidden=true;
   updateBreakOverlay(player.mining.pos,0);
   triggerHandSwing(.7);
@@ -2308,8 +2426,11 @@ function startMining(){
 
 function updateMining(dt){
   if(!player.primaryHeld||!player.mining){ui.mineMeter.hidden=true;hideBreakOverlay();return}
+  const prevStage=Math.floor((player.mining.progress/player.mining.duration)*6);
   player.mining.progress+=dt;
   const pct=Math.min(100,(player.mining.progress/player.mining.duration)*100);
+  const stage=Math.floor((player.mining.progress/player.mining.duration)*6);
+  if(stage!==prevStage)playChipSound();
   updateBreakOverlay(player.mining.pos,pct/100);
   if(player.mining.progress>=player.mining.duration){
     const wx=player.mining.pos.x,wy=player.mining.pos.y,wz=player.mining.pos.z;
@@ -2388,10 +2509,14 @@ function removePlacedFoliageAt(wx,wy,wz){
 }
 
 function placeSelected(){
+  const type=player.hotbar[player.selectedSlot];
+  // Food and potions are consumed instead of placed
+  if(BT[type]?.food||BT[type]?.drink){if(consumeSelected())return}
   const hit=raycast(5);
   if(!hit||!hit.face)return;
-  const type=player.hotbar[player.selectedSlot];
   if(!type||(player.inventory[type]||0)<=0){toast('Nothing to place. Mine blocks first.');return}
+  // Non-placeable crafted items (tools, weapons, armor, materials) shouldn't drop as world blocks
+  if(BT[type]&&(BT[type].tool||BT[type].weapon||BT[type].armor||BT[type].metal||type===33||type===35||type===37||type===43)){toast('That can\u2019t be placed.');return}
   if(LIQUID_TYPES.has(String(hit.blockType))){toast('Need a solid face to place.');return}
   const placePos=hit.blockPos.clone();
   const face=hit.face;
@@ -2563,6 +2688,7 @@ const PLAYER_HEIGHT = 4.2;
 const PLAYER_EYE_HEIGHT = 3.8;
 let coyoteTime = 0;
 const COYOTE_TIME_MAX = 0.1;
+let footstepTimer = 0, wasInWater = false;
 
 function jumpHeld(){return keys.has(' ')||keys.has('spacebar')}
 
@@ -2576,7 +2702,17 @@ function tryJump(inWater=isPlayerInWater()){
 }
 
 function movementSpeed(inWater,sprint){
-  return inWater?(sprint?8.5:4.8):(sprint?14:9);
+  const base=inWater?(sprint?8.5:4.8):(sprint?14:9);
+  // Freezing players move slower
+  return player.temperature<20?base*0.8:base;
+}
+function nearWarmth(pos){
+  const r=3*BLOCK;
+  for(const f of placedFoliage){
+    if(f.userData.placedType!==5)continue; // torch
+    if(f.position.distanceTo(pos)<r)return true;
+  }
+  return false;
 }
 
 function canStandAt(x,z,fromY){
@@ -2703,6 +2839,16 @@ function updatePlayer(dt){
       coyoteTime = Math.max(0, coyoteTime - dt);
     }
   
+  // Footstep audio while walking on ground
+  if(moving&&player.grounded&&!inWater){
+    footstepTimer-=dt;
+    if(footstepTimer<=0){playFootstep();footstepTimer=sprint?.28:.42}
+  } else {
+    footstepTimer=0;
+  }
+  // Water entry/exit splash
+  if(inWater!==wasInWater){playSplashSound();wasInWater=inWater}
+
   // Keep in bounds
   const maxW=WORLD_RADIUS*BLOCK;
   player.pos.x=THREE.MathUtils.clamp(player.pos.x,-maxW,maxW);
@@ -2713,13 +2859,16 @@ function updateSurvival(dt){
   const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
   const sprint=moving&&keys.has('shift');
   const inWater=isPlayerInWater();
-  player.hunger=Math.max(0,player.hunger-dt*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
+  // Hunger depletes noticeably faster (~3x) so food matters
+  player.hunger=Math.max(0,player.hunger-dt*3*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
 
   const sunY=Math.sin(dayTime*Math.PI*2);
   const altitude=Math.max(0,(player.pos.y-BLOCK*12)/(MAX_Y*BLOCK));
   const weatherCold=weather.type==='mirrorRain'?12:weather.type==='softFog'?6:0;
   const targetTemp=THREE.MathUtils.clamp(88-(sunY<0?18:0)-(inWater?28:0)-altitude*18-weatherCold*weather.intensity,12,100);
   player.temperature+= (targetTemp-player.temperature)*dt*.045;
+  // Nearby placed torches radiate warmth
+  if(nearWarmth(player.pos))player.temperature=Math.min(100,player.temperature+dt*15);
 
   if(player.hunger<=0)player.hp=Math.max(0,player.hp-dt*1.4);
   else if(player.hunger<18)player.resolve=Math.max(0,player.resolve-dt*.9);
