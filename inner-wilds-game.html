@@ -1076,6 +1076,7 @@ const player={
   hotbar:[1,2,3,4,9,10,0,0,0],
   equippedWeapon:null,
   mining:null,
+  swingCooldown:0,
   primaryHeld:false,
   trusted:new Set(),
   talked:new Set(),
@@ -1556,7 +1557,8 @@ function addAgent(type,name,x,z,opts={}){
   else if(type==='waystone')model=makeWaystone(opts.color||0x79d8c8);
   else model=humanoid(0x5e78b6,false);
   model.position.set(x,y,z);
-  model.userData.agent={type,name,hp:opts.hp||2,awake:type==='monster'&&opts.awake===true,trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,opts};
+  const hp0=opts.hp||2;
+  model.userData.agent={type,name,hp:hp0,maxHp:hp0,awake:type==='monster'&&opts.awake===true,state:'idle',trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,knockback:new THREE.Vector3(),dying:0,opts};
   model.traverse(o=>{if(o.isMesh){o.userData.agentRef=model;if(!o.userData.outline)agentMeshes.push(o)}});
   scene.add(model);agents.push(model);return model;
 }
@@ -1626,6 +1628,23 @@ function updateAgents(dt){
     const data=agent.userData.agent;
     const parts=agent.userData.parts;
     data.t+=dt;
+    // Death animation: shrink, then burst + remove.
+    if(data.dying>0){
+      data.dying+=dt;
+      const k=Math.min(1,data.dying/0.3);
+      agent.scale.setScalar((data.baseScale||1)*(1-k));
+      if(k>=1){
+        spawnParticle(agent.position.clone().add(new THREE.Vector3(0,BLOCK*.5,0)),data.type==='monster'?0x7b5cff:0x79d8c8,26,5);
+        removeAgent(agent);
+      }
+      continue;
+    }
+    // Knockback impulse decays quickly.
+    if(data.knockback&&data.knockback.lengthSq()>0.02){
+      const nx=agent.position.x+data.knockback.x*dt,nz=agent.position.z+data.knockback.z*dt;
+      if(groundYAt(nx,nz)>0){agent.position.x=nx;agent.position.z=nz}
+      data.knockback.multiplyScalar(Math.pow(0.02,dt));
+    }
     if(parts?.aura){
       const rings=Array.isArray(parts.aura)?parts.aura:[parts.aura];
       rings.forEach((ring,index)=>{ring.rotation.z+=dt*(index%2?-1.25:1.4);ring.material.opacity=.36+Math.sin(data.t*2.1+index)*.1});
@@ -1634,12 +1653,39 @@ function updateAgents(dt){
     const d=toPlayer.length();
     
     if(data.type==='monster'){
-      if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
-      if(data.awake&&d>0.01&&(d<38||player.noise>55))agent.position.addScaledVector(toPlayer.multiplyScalar(1/d),dt*(player.noise>65?4.2:2.4));
-      else agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
+      // Simple state machine: IDLE -> CHASING -> ATTACKING -> FLEEING.
+      const ATTACK_RANGE=2*BLOCK, SENSE_RANGE=38, lowHp=data.hp<data.maxHp*0.3;
+      let nextState;
+      if(!data.awake)nextState='idle';
+      else if(lowHp)nextState='fleeing';
+      else if(d<ATTACK_RANGE)nextState='attacking';
+      else if(d<SENSE_RANGE||player.noise>55)nextState='chasing';
+      else nextState='idle';
+      data.state=nextState;
+      const dir=d>0.01?toPlayer.clone().multiplyScalar(1/d):new THREE.Vector3();
+      if(nextState==='fleeing'){
+        // Run away from the player and look back.
+        const away=dir.clone().multiplyScalar(-1);
+        const nx=agent.position.x+away.x*dt*BLOCK*2.0,nz=agent.position.z+away.z*dt*BLOCK*2.0;
+        if(groundYAt(nx,nz)>0){agent.position.x=nx;agent.position.z=nz}
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
+      } else if(nextState==='chasing'){
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
+        const speed=BLOCK*(player.noise>65?1.8:1.35); // ~3-4 units/s toward player
+        const nx=agent.position.x+dir.x*dt*speed,nz=agent.position.z+dir.z*dt*speed;
+        if(groundYAt(nx,nz)>0){agent.position.x=nx;agent.position.z=nz}
+      } else if(nextState==='attacking'){
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
+        // Stop and deal contact damage.
+        player.hp=Math.max(0,player.hp-dt*12);player.noise=Math.min(100,player.noise+dt*3);
+        data.attackFlash=(data.attackFlash||0)+dt;
+        if(data.attackFlash>0.6){data.attackFlash=0;spawnDamageNumber(player.pos.clone().add(new THREE.Vector3(0,BLOCK*2,0)),Math.round(7.2),'#ff5d7a')}
+      } else {
+        agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
+      }
       if(parts?.head)parts.head.rotation.x=-.12+Math.sin(data.t*3)*.05;
       if(parts?.ribs)parts.ribs.forEach((rib,index)=>{rib.scale.x=1+Math.sin(data.t*5+index)*.035});
-      if(data.awake&&d<3){player.hp=Math.max(0,player.hp-dt*12);player.noise=Math.min(100,player.noise+dt*3)}
     } else if(data.type==='animal'){
       if(player.noise>40&&d<15){
         const away=agent.position.clone().sub(player.pos);away.y=0;away.normalize();
@@ -2114,7 +2160,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
     // Combat reaches slightly farther than mining so creatures are reliably hit.
     const hit=raycast(6);
     if(hit&&hit.agent){
-      strikeMonster(hit.agent);return;
+      if(player.swingCooldown<=0)strikeMonster(hit.agent);
+      return;
     }
     startMining();
   }
@@ -2216,6 +2263,8 @@ function hideInstance(mesh,instanceId){
 }
 
 function startMining(){
+  // Don't start chipping a block mid-swing.
+  if(player.swingCooldown>0)return;
   const hit=raycast(5);
   if(!hit)return;
   if(hit.foliage){
@@ -2415,25 +2464,70 @@ function placeSelected(){
 // ============================================================
 // COMBAT
 // ============================================================
+function weaponDamage(type){return BT[type]?.damage||2}
+const damageNumbers=[];
+const dmgTexCache={};
+function makeDamageTexture(text,color){
+  const key=text+'|'+color;
+  if(dmgTexCache[key])return dmgTexCache[key];
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const x=c.getContext('2d');
+  x.font='bold 44px Georgia,serif';x.textAlign='center';x.textBaseline='middle';
+  x.lineWidth=6;x.strokeStyle='rgba(0,0,0,.8)';x.strokeText(text,64,32);
+  x.fillStyle=color;x.fillText(text,64,32);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+  dmgTexCache[key]=t;return t;
+}
+function spawnDamageNumber(pos,amount,color='#ffe08a'){
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:makeDamageTexture(String(amount),color),transparent:true,depthTest:false,depthWrite:false,fog:false}));
+  sprite.position.copy(pos);sprite.position.y+=BLOCK*.6;
+  sprite.scale.set(BLOCK*1.4,BLOCK*.7,1);
+  sprite.userData={age:0,life:.9};
+  sprite.renderOrder=30;
+  scene.add(sprite);damageNumbers.push(sprite);
+}
+function updateDamageNumbers(dt){
+  for(let i=damageNumbers.length-1;i>=0;i--){
+    const s=damageNumbers[i];
+    s.userData.age+=dt;
+    s.position.y+=dt*BLOCK*1.2;
+    s.material.opacity=Math.max(0,1-s.userData.age/s.userData.life);
+    if(s.userData.age>=s.userData.life){scene.remove(s);s.material.dispose();damageNumbers.splice(i,1)}
+  }
+}
+
+function removeAgent(agent){
+  agent.traverse(obj=>{const meshIndex=agentMeshes.indexOf(obj);if(meshIndex!==-1)agentMeshes.splice(meshIndex,1)});
+  scene.remove(agent);
+  const ai=agents.indexOf(agent);if(ai!==-1)agents.splice(ai,1);
+}
+
 function strikeMonster(agent){
+  const data=agent.userData.agent;
+  if(data.dying>0)return;
   const weapon=player.hotbar[player.selectedSlot];
-  const damage=BT[weapon]?.damage||2;
-  agent.userData.agent.awake=true;
-  agent.userData.agent.hp-=damage;
+  const damage=weaponDamage(weapon);
+  data.awake=true;
+  data.hp-=damage;
   player.noise=Math.min(100,player.noise+5);
+  player.swingCooldown=.32;
   triggerHandSwing(1);
-  spawnParticle(agent.position,0xd97d8d,22,4);
+  // Knockback away from the player.
+  const kb=agent.position.clone().sub(player.pos);kb.y=0;
+  if(kb.lengthSq()>0.0001){kb.normalize().multiplyScalar(BLOCK*3.4);data.knockback.copy(kb)}
+  spawnParticle(agent.position.clone().add(new THREE.Vector3(0,BLOCK*.6,0)),0xd97d8d,18,4);
+  spawnDamageNumber(agent.position,damage,'#ff9dae');
   playHitSound();
-  if(agent.userData.agent.hp<=0){
-    agent.traverse(obj=>{const meshIndex=agentMeshes.indexOf(obj);if(meshIndex!==-1)agentMeshes.splice(meshIndex,1)});
-    scene.remove(agent);
-    agents.splice(agents.indexOf(agent),1);
-    if(agent.userData.agent.type==='monster'){
+  if(data.hp<=0&&data.dying<=0){
+    // Death tween: shrink over 0.3s, then burst + remove (handled in updateAgents).
+    data.dying=0.0001;
+    data.baseScale=agent.scale.x;
+    if(data.type==='monster'){
       player.monstersRepelled++;
       completeQuest('monster');
       toast('Hollowling defeated!');
     } else {
-      toast(agent.userData.agent.name+' retreated');
+      toast(data.name+' retreated');
     }
   }
 }
@@ -2751,12 +2845,14 @@ function animate(){
   if(ui.brand)ui.brand.style.display=inGameplay?'none':'block';
   
   if(inGameplay){
+    if(player.swingCooldown>0)player.swingCooldown=Math.max(0,player.swingCooldown-dt);
     updatePlayer(dt);
     updateSurvival(dt);
     updateCamera();
     updateMining(dt);
     updateAgents(dt);
     updateParticles(dt);
+    updateDamageNumbers(dt);
     updateHands(dt);
     updatePlayerModel(dt);
     updateDayNight(dt);
@@ -3073,6 +3169,32 @@ if(new URLSearchParams(location.search).has('test')){
         waterTime=0;updateWater(0.5);
         const moved=Math.abs(attr.array[1]-(waterMesh.userData.basePositions[1]))>=0;
         check('Water surface animates with waves',Boolean(waterMesh.userData.basePositions&&typeof updateWater==='function'&&moved));
+      }
+      check('Tool tiers grant weapon damage',weaponDamage(22)>weaponDamage(0));
+      {
+        const m=agents.find(a=>a.userData.agent.type==='monster');
+        if(m){
+          const d=m.userData.agent;
+          const oldHp=d.hp,oldMax=d.maxHp,oldState=d.state,oldKb=d.knockback.clone(),oldCd=player.swingCooldown,oldPos=m.position.clone(),oldAwake=d.awake;
+          d.hp=100;d.maxHp=100;d.dying=0;d.knockback.set(0,0,0);player.swingCooldown=0;
+          m.position.copy(player.pos).add(new THREE.Vector3(BLOCK*1.5,0,0));
+          const dnBefore=damageNumbers.length;
+          strikeMonster(m);
+          const pass=d.hp<100&&player.swingCooldown>0&&d.knockback.lengthSq()>0&&damageNumbers.length>dnBefore&&d.awake&&d.dying<=0;
+          d.hp=oldHp;d.maxHp=oldMax;d.state=oldState;d.knockback.copy(oldKb);player.swingCooldown=oldCd;m.position.copy(oldPos);d.awake=oldAwake;
+          check('Combat applies knockback, damage numbers, cooldown',pass);
+        } else check('Combat applies knockback, damage numbers, cooldown',false,'no monster');
+      }
+      {
+        const m=agents.find(a=>a.userData.agent.type==='monster');
+        if(m){
+          const d=m.userData.agent;
+          const oldAwake=d.awake,oldHp=d.hp,oldMax=d.maxHp,oldPos=m.position.clone(),oldState=d.state;
+          d.awake=true;d.hp=100;d.maxHp=100;m.position.copy(player.pos).add(new THREE.Vector3(BLOCK*1.2,0,0));updateAgents(0.0001);const attacking=d.state==='attacking';
+          d.hp=5;updateAgents(0.0001);const fleeing=d.state==='fleeing';
+          d.awake=oldAwake;d.hp=oldHp;d.maxHp=oldMax;m.position.copy(oldPos);d.state=oldState;
+          check('Monster AI state machine (attack/flee)',attacking&&fleeing);
+        } else check('Monster AI state machine (attack/flee)',false,'no monster');
       }
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
