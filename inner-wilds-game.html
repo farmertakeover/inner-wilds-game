@@ -3071,6 +3071,58 @@ function animate(){
 }
 
 // ============================================================
+// SAVE / LOAD
+// ============================================================
+const SAVE_KEY='iw_save_v1';
+function saveGame(){
+  try{
+    const data={
+      v:1,
+      pos:[player.pos.x,player.pos.y,player.pos.z],
+      yaw,pitch,dayTime,
+      inventory:player.inventory,
+      hotbar:player.hotbar,
+      selectedSlot:player.selectedSlot,
+      hp:player.hp,hunger:player.hunger,temperature:player.temperature,resolve:player.resolve,
+      monstersRepelled:player.monstersRepelled,
+      discovered:[...player.discovered],
+      waystones:[...player.waystones],
+      trusted:[...player.trusted],
+      quests:quests.map(q=>({id:q.id,progress:q.progress})),
+      placedFoliage:placedFoliage.map(f=>({p:[f.userData.blockPos.x,f.userData.blockPos.y,f.userData.blockPos.z],t:f.userData.placedType})),
+    };
+    localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+    return true;
+  }catch(e){return false}
+}
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw)return false;
+    const d=JSON.parse(raw);
+    if(!d||d.v!==1)return false;
+    if(Array.isArray(d.pos))player.pos.set(d.pos[0],d.pos[1],d.pos[2]);
+    if(d.inventory&&typeof d.inventory==='object')player.inventory=d.inventory;
+    if(Array.isArray(d.hotbar)&&d.hotbar.length===9)player.hotbar=d.hotbar.slice();
+    if(typeof d.selectedSlot==='number')player.selectedSlot=THREE.MathUtils.clamp(d.selectedSlot,0,8);
+    for(const k of['hp','hunger','temperature','resolve','monstersRepelled'])if(typeof d[k]==='number')player[k]=d[k];
+    if(typeof d.yaw==='number')yaw=d.yaw;
+    if(typeof d.pitch==='number')pitch=d.pitch;
+    if(typeof d.dayTime==='number')dayTime=d.dayTime;
+    if(Array.isArray(d.discovered))player.discovered=new Set(d.discovered);
+    if(Array.isArray(d.waystones))player.waystones=new Set(d.waystones);
+    if(Array.isArray(d.trusted))player.trusted=new Set(d.trusted);
+    if(Array.isArray(d.quests))d.quests.forEach(sq=>{const q=quests.find(x=>x.id===sq.id);if(q&&typeof sq.progress==='number')q.progress=sq.progress});
+    if(Array.isArray(d.placedFoliage)){
+      for(const f of placedFoliage.slice())scene.remove(f);
+      placedFoliage.length=0;
+      for(const pf of d.placedFoliage)if(pf&&Array.isArray(pf.p))addPlacedFoliage(pf.p[0],pf.p[1],pf.p[2],pf.t);
+    }
+    return true;
+  }catch(e){return false}
+}
+
+// ============================================================
 // INIT
 // ============================================================
 function init(){
@@ -3112,6 +3164,16 @@ function init(){
   
   // Find spawn
   player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
+
+  // Restore a previous session if one exists (skipped under the ?test harness for determinism).
+  const isTest=new URLSearchParams(location.search).has('test');
+  if(!isTest&&loadGame()){
+    rebuildVisibleChunks(true);
+    buildWaterMesh();
+    toast('Restored your last expedition.');
+  }
+  // Autosave periodically.
+  if(!isTest)setInterval(()=>{if(state.started)saveGame()},30000);
   
   renderQuickbar();
   renderQuests();
@@ -3407,6 +3469,18 @@ if(new URLSearchParams(location.search).has('test')){
         check('Inventory drop, quick-move, and auto-sort work',dropped&&moved&&sorted);
       }
       check('Footstep, splash, pickup, and chipping sounds defined',[playFootstep,playSplash,playItemPickupSound,playMineChip,playNoiseBurst].every(f=>typeof f==='function'));
+      {
+        const oldInv={...player.inventory},oldHot=player.hotbar.slice(),oldHp=player.hp,oldRaw=localStorage.getItem(SAVE_KEY);
+        player.inventory={2:7};player.hotbar=[2,0,0,0,0,0,0,0,0];player.hp=42;
+        const saved=saveGame();
+        player.inventory={};player.hotbar=[0,0,0,0,0,0,0,0,0];player.hp=100;
+        const ok=loadGame();
+        const pass=saved&&ok&&player.inventory[2]===7&&player.hotbar[0]===2&&player.hp===42;
+        player.inventory=oldInv;player.hotbar=oldHot;player.hp=oldHp;
+        if(oldRaw===null)localStorage.removeItem(SAVE_KEY);else localStorage.setItem(SAVE_KEY,oldRaw);
+        renderQuickbar();
+        check('Save and load round-trips game state',pass);
+      }
       {
         const m=agents.find(a=>a.userData.agent.type==='monster');
         if(m){
