@@ -726,12 +726,13 @@ function hideBreakOverlay(){if(breakOverlay)breakOverlay.visible=false}
 
 function buildFirstPersonHands(){
   const group=new THREE.Group();group.visible=false;group.position.set(0,-.38,-.55);
-  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72});
-  const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a});
+  // depthTest:false keeps the arms drawn on top of nearby world geometry so they never z-fight or clip away.
+  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72,depthTest:false});
+  const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a,depthTest:false});
   const addHand=side=>{
     const root=new THREE.Group();root.position.set(side*.22,.04,-.04);
-    const arm=new THREE.Mesh(new THREE.BoxGeometry(.10,.10,.30),sleeve);arm.position.set(0,.02,.02);arm.rotation.x=.55;arm.rotation.z=side*.08;root.add(arm);
-    const hand=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),skin);hand.position.set(0,-.02,-.06);hand.scale.set(1.0,.8,1.1);root.add(hand);
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(.16,.16,.30),sleeve);arm.position.set(0,.02,.02);arm.rotation.x=.55;arm.rotation.z=side*.08;arm.renderOrder=20;root.add(arm);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),skin);hand.position.set(0,-.02,-.08);hand.scale.set(1.0,.8,1.1);hand.renderOrder=20;root.add(hand);
     group.add(root);return root;
   };
   // Held item mesh (shown in right hand)
@@ -747,6 +748,47 @@ function buildFirstPersonHands(){
 }
 
 function triggerHandSwing(power=1){if(handRig)handRig.swing=Math.max(handRig.swing,.42*power)}
+
+// Third-person avatar (shown when the V key toggles thirdPerson on).
+let playerModel=null;
+function buildPlayerModel(){
+  const model=humanoid(0x2f6f6a);
+  model.visible=false;
+  // Held item in the right hand, mirrors updateHandItem() in spirit.
+  const itemGroup=new THREE.Group();itemGroup.position.set(.92,1.7,.4);
+  const itemBox=new THREE.Mesh(new THREE.BoxGeometry(.42,.42,.42),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
+  itemGroup.add(itemBox);
+  model.add(itemGroup);
+  model.userData.itemGroup=itemGroup;model.userData.itemBox=itemBox;
+  scene.add(model);
+  playerModel=model;
+}
+function updatePlayerModel(dt){
+  if(!playerModel)return;
+  playerModel.visible=thirdPerson&&state.started&&ui.start.classList.contains('hidden');
+  if(!playerModel.visible)return;
+  playerModel.position.set(player.pos.x,player.pos.y,player.pos.z);
+  playerModel.rotation.y=yaw+Math.PI;
+  // Simple walk sway when moving on the ground.
+  const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
+  const t=performance.now()*.008;
+  const stride=moving&&player.grounded?Math.sin(t):0;
+  const ud=playerModel.userData;
+  if(ud.lArm)ud.lArm.rotation.x=-stride*.4;
+  if(ud.rArm)ud.rArm.rotation.x=stride*.4;
+  if(ud.lLeg)ud.lLeg.rotation.x=stride*.5;
+  if(ud.rLeg)ud.rLeg.rotation.x=-stride*.5;
+  // Reflect the held item color/visibility.
+  const type=player.hotbar[player.selectedSlot];
+  const has=type&&type!==0&&(player.inventory[type]||0)>0&&BT[type];
+  ud.itemGroup.visible=Boolean(has);
+  if(has)ud.itemBox.material.color.setHex(BT[type].color);
+}
+function toggleThirdPerson(){
+  thirdPerson=!thirdPerson;
+  if(handRig)handRig.group.visible=!thirdPerson;
+  if(typeof toast==='function')toast(thirdPerson?'Third-person view':'First-person view');
+}
 
 function updateHandItem(){
   if(!handRig)return;
@@ -824,7 +866,7 @@ function updateHands(dt){
   const inGame=state.started&&ui.start.classList.contains('hidden');
   handRig.t+=dt*(mining?12:7);
   handRig.swing=Math.max(0,handRig.swing-dt*2.8);
-  handRig.group.visible=inGame;
+  handRig.group.visible=inGame&&!thirdPerson;
   if(!inGame){updateHandItem();return}
   const mineBeat=mining?Math.max(0,Math.sin(handRig.t))*.75:0;
   const strike=handRig.swing>0.02?Math.sin((1-handRig.swing/.42)*Math.PI):0;
@@ -1959,6 +2001,7 @@ let mouseSensitivity=BASE_MOUSE_SENS*1.5;
 let yaw=0,pitch=0;
 let renderDistance=3;
 let showCrafting=false;
+let thirdPerson=false;
 let state={started:false};
 
 function requestGamePointerLock(){
@@ -1987,7 +2030,7 @@ window.addEventListener('keydown',e=>{
   if(k==='m')openMainMenu();
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
-  if(k==='v'){}
+  if(k==='v'){toggleThirdPerson()}
   if(k==='tab'){toggleInventory()}
   if(k>='1'&&k<='9'){
     // Dialogue choices take priority over hotbar when dialogue is open
@@ -2011,8 +2054,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   if(!showCrafting&&!ui.notes.classList.contains('open')&&ui.start.classList.contains('hidden'))requestGamePointerLock();
   if(e.button===0){
     player.primaryHeld=true;
-    // Check monster first
-    const hit=raycast(4);
+    // Combat reaches slightly farther than mining so creatures are reliably hit.
+    const hit=raycast(6);
     if(hit&&hit.agent){
       strikeMonster(hit.agent);return;
     }
@@ -2090,6 +2133,8 @@ function raycast(maxDist=5){
     const bflyHitMeshes=butterflyInstanced?.butterflyMeshes?.flatMap(b=>b.group.visible?[b.wingL,b.wingR]:[])||[];
     const foliageMeshes=[grassInstanced,flowerInstanced,...bflyHitMeshes,fireflyInstanced,...placedFoliage].filter(m=>m&&m.visible!==false);
     raycaster.set(origin,dir);raycaster.far=maxDist*BLOCK;
+    // Ensure agent child meshes have fresh world matrices before intersection, or fast-moving/animated agents are missed.
+    scene.updateMatrixWorld(true);
     const agentHit=raycaster.intersectObjects(agentMeshes,false).find(h=>h.object.userData.agentRef);
     const foliageHit=raycaster.intersectObjects(foliageMeshes,false)[0];
     if(agentHit&&(!blockHit||agentHit.distance<blockHit.distance))return{object:agentHit.object,agent:agentHit.object.userData.agentRef,distance:agentHit.distance};
@@ -2243,6 +2288,11 @@ function addPlacedFoliage(wx,wy,wz,type){
     cross.rotation.y=Math.PI/2;
     mesh.add(cross);
     mesh.position.y+=BLOCK*.1;
+    // Warm light cast by the placed torch flame.
+    const light=new THREE.PointLight(0xff8833,1.6,BLOCK*8,1.6);
+    light.position.set(0,BLOCK*.32,0);
+    mesh.add(light);
+    mesh.userData.torchLight=light;
   } else if(isBug){
     // Cross-plane for bugs so visible from any angle
     const cross=new THREE.Mesh(new THREE.PlaneGeometry(BLOCK*.4,BLOCK*.4),mat);
@@ -2612,9 +2662,20 @@ function updateSurvival(dt){
   if(player.hunger>65&&player.temperature>55&&player.hp<100)player.hp=Math.min(100,player.hp+dt*.35);
 }
 
+const THIRD_PERSON_DIST=BLOCK*4.2,THIRD_PERSON_HEIGHT=BLOCK*1.4;
 function updateCamera(){
-  camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
   camera.rotation.order='YXZ';
+  if(thirdPerson){
+    // Orbit behind and above the player, looking back at the avatar.
+    const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+    const focus=new THREE.Vector3(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT*.7,player.pos.z);
+    const back=forward.clone().multiplyScalar(-THIRD_PERSON_DIST);
+    back.y+=THIRD_PERSON_HEIGHT-pitch*THIRD_PERSON_DIST;
+    camera.position.copy(focus).add(back);
+    camera.lookAt(focus);
+    return;
+  }
+  camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
   camera.rotation.y=yaw;
   camera.rotation.x=pitch;
 }
@@ -2640,6 +2701,7 @@ function animate(){
     updateAgents(dt);
     updateParticles(dt);
     updateHands(dt);
+    updatePlayerModel(dt);
     updateDayNight(dt);
     updateAmbient(dt);
     updateWeather(dt);
@@ -2688,6 +2750,7 @@ function init(){
   buildWeather();
   buildBreakOverlay();
   buildFirstPersonHands();
+  buildPlayerModel();
   buildCelestialBodies();
   
   // Place agents
@@ -2914,6 +2977,28 @@ if(new URLSearchParams(location.search).has('test')){
       }
       check('Music no longer uses oscillator composition',!String(initMusic).includes('createOscillator')&&!String(updateMusic).includes('playSound('));
       check('Settings persistence ready',typeof localStorage!=='undefined');
+      // --- Enhancement coverage ---
+      {
+        const arm=handRig?.left?.children?.find(m=>m.geometry?.parameters?.width!==undefined);
+        const depthOff=handRig?.left?.children?.some(m=>m.material?.depthTest===false);
+        check('First-person hands enlarged and draw on top',(arm?.geometry.parameters.width||0)>=.15&&depthOff);
+      }
+      check('Combat raycast refreshes agent world matrices',String(raycast).includes('updateMatrixWorld'));
+      {
+        const before=thirdPerson,handsBefore=handRig?.group.visible;
+        toggleThirdPerson();
+        const flipped=thirdPerson!==before&&handRig?.group.visible===false;
+        toggleThirdPerson();
+        check('Third-person view model and toggle work',Boolean(playerModel&&playerModel.userData.itemGroup&&flipped&&thirdPerson===before));
+        if(handsBefore!==undefined)handRig.group.visible=handsBefore;
+      }
+      {
+        const vx=worldToVoxel(player.pos.x)+6,vy=Math.max(2,Math.floor(player.pos.y/BLOCK)+2),vz=worldToVoxel(player.pos.z)+6;
+        const torch=addPlacedFoliage(vx,vy,vz,5);
+        let light=null;torch.traverse(o=>{if(o.isPointLight)light=o});
+        check('Placed torch emits a point light',Boolean(light&&light.color.getHex()>0));
+        scene.remove(torch);const ti=placedFoliage.indexOf(torch);if(ti!==-1)placedFoliage.splice(ti,1);
+      }
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
     ui.qaPanel.hidden=false;

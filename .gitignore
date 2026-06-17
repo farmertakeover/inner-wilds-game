@@ -3,3 +3,8 @@
 node_modules/
 .env
 /tmp/
+
+# local test tooling
+package.json
+package-lock.json
+tests/debug.js
