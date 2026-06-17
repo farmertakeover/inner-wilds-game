@@ -1,5 +1,7 @@
 # Inner Wilds — 3D Voxel Survival/Adventure Game
 
+**Current version: `v0.4.0` — "Archipelago Update"** (shown in the main menu and the top-right HUD badge).
+
 A browser-based 3D voxel survival/adventure game built with **Three.js** (CDN, no bundler). Single-file HTML, fully playable in Chrome/Firefox.
 
 **Play it**: `python3 -m http.server 8080` in this directory, then open `http://localhost:8080/inner-wilds-game.html`
@@ -27,12 +29,13 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
 | Q | Drop the selected stack |
-| M | Main menu |
+| Tab | Inventory **+ Journal/Quests** popup |
+| M | Main menu (New Game / Continue / Settings) |
 | V | Toggle 1st/3rd person |
 | Enter | Advance dialogue |
 | Esc | Release pointer lock |
 
-Right-click while holding food/potions eats or drinks them.
+Right-click while holding food/potions eats or drinks them. The quest journal now lives **inside the Tab popup** (no longer pinned to the screen).
 
 ---
 
@@ -369,6 +372,53 @@ Worked through the "Priority Issues to Fix" list from the enhancement prompt abo
 - **#20 Dialogue** — choice buttons expose `data-key` and highlight when their number key is pressed.
 
 Not changed: #6 (sky is already a dynamic day/night gradient; starfield added on top), #8 (crosshair already present), #16 (chunk rebuild already boundary-gated), #21 (kept HTMLAudioElement music loops to preserve the locked CC0 self-tests).
+
+### Session 4 — `v0.4.0` "Archipelago Update"
+A player-feedback pass. The self-test suite grew from 83 to **96 tests** (all passing via `tests/run-selftest.js`).
+
+- **Version surfaced** — `GAME_VERSION`/`GAME_VERSION_NAME` constants render in the main menu and a persistent top-right HUD badge, so you always know which build you're on.
+- **Arms no longer see-through** — the first-person hands render on a dedicated viewmodel layer (`VIEWMODEL_LAYER = 1`) in a second pass with a cleared depth buffer (`renderFrame()`), so grass, flowers, butterflies, and other transparent world geometry can never bleed through the arms.
+- **Better, wider hands** — the first-person rig was rebuilt as a blocky Minecraft/Hytale-style arm (sleeve + cuff + forearm + hand + thumb), spread further toward the screen corners so the hands no longer crowd the center.
+- **More humanoid avatar** — `humanoid()` now has a neck, shoulders, shoulder-pivoting arms with hands, and hip-pivoting legs with feet. Limbs swing from their joints. The third-person avatar raises its right arm to present the held tool. (NPCs benefit too.)
+- **Textures with depth** — `drawBlockTexture()` adds a top-to-bottom light gradient, denser grain, and a new `applyBlockDepth()` pass (top/left bevel highlight, bottom/right shadow, radial ambient-occlusion) for chunky, sculpted blocks.
+- **Cleaner menu** — main menu is **New Game / Create World**, **Continue** (disabled when no save), **Settings**, **Field Notes**. The settings sliders no longer sit under the menu — they live only behind the Settings button. Settings gained an **Autosave toggle** and a **Save Now** button.
+- **Save/spawn fixes** — `saveGame()` clamps the stored Y to the surface, Continue/load snaps you above ground, `isBuried()` lifts a player embedded in terrain back to the surface each frame, and a void-catch returns you to solid ground if you fall off the world. No more spawning underground or falling through the map.
+- **Journal moved to the Tab popup** — the always-on journal HUD panel is gone; quests render inside the inventory (Tab) overlay.
+- **RPG-style quests** — quests now have `locked → active → done` states. You start with a single objective and **pick up** the rest along the story (talking to the Cartographer unlocks the waystone/exploration/crafting/animal lines; waking a Hollowling unlocks the combat line; reaching a satellite island completes "Cross the open water"). No more wall of simple chores.
+- **Minecraft-length day/night** — `DAY_CYCLE_SPEED = 1/1200` → a full cycle is ~20 real minutes.
+- **Multiple islands** — the world is now an **archipelago**: the main Survey Isle plus four satellite islands (`ISLANDS[]`) separated by swimmable sea, bounded by `WORLD_EXTENT`. `islandFalloff()` drives terrain, foliage, and ruins for every island; a third "Tide Waystone" waits on a far island to reward exploration.
+
+---
+
+## Recommended Addons & Updates
+
+A prioritized backlog of high-impact additions for future sessions. Items are grouped and ordered roughly by player-experience value vs. implementation cost.
+
+### Tier 1 — Highest impact, low/medium effort
+1. **Inter-island bridges & boats** — the archipelago is swimmable, but a craftable raft/boat (faster than swimming, holds Temp) or buildable rope bridges would make island-hopping feel intentional. Hook into the existing crafting `RECIPES` and `placeSelected()`.
+2. **Per-island biomes & palettes** — give each `ISLANDS[]` entry a biome tag (ember/ash, mirror/ice, amber/desert, lush) that shifts `biomeType()` weighting and ambient foliage color, so each island reads as a distinct place.
+3. **Quest markers / compass** — a HUD compass strip or floating waypoint diamonds toward the current active quest's target (Cartographer, nearest unrestored waystone, unexplored island). Builds on the RPG quest state machine.
+4. **Sleep / time-skip at night** — with the longer 20-minute cycle, a "rest" interaction (e.g., near a placed torch or a bedroll item) to skip to dawn. Pairs well with night being more dangerous.
+5. **Minimap** — a small top-down canvas of nearby chunks + island outlines + agent dots, toggled with `M`-adjacent key.
+
+### Tier 2 — Depth & systems
+6. **Caves & ores underground** — current terrain is surface-only; add 3D noise carving and ore distribution by depth, giving mining real progression and a reason for tool tiers.
+7. **Hunger → health loop & cooking** — starvation damage, a campfire/furnace block to cook raw food into higher-saturation meals.
+8. **Equipment & armor slots** — the crafting list already has armor pieces; add an equip UI and damage reduction.
+9. **More creatures + taming** — additional animals with simple behaviors; let trusted animals follow the player.
+10. **Structures worth exploring** — loot in ruins (chests with items), more ruin variety, a "dungeon" on one satellite island guarding the Tide Waystone.
+
+### Tier 3 — Polish & platform
+11. **Mobile / touch controls** — virtual joystick + tap-to-mine for phones/tablets.
+12. **IndexedDB saves + multiple save slots** — localStorage is fine now, but slots and larger world state want IndexedDB.
+13. **Spatial audio** — position SFX in 3D (`PannerNode`) for waterfalls, fireflies, monsters.
+14. **Settings: FOV, brightness, render scale** — more graphics knobs alongside render distance.
+15. **Accessibility** — colorblind-safe meters, remappable keys, subtitle toggle for dialogue.
+
+### Engine / tech-debt notes
+- The first-person viewmodel uses a two-pass layered render (`renderFrame()`); if more overlay UI-in-world elements are added, consider a dedicated overlay scene + camera instead.
+- `WORLD_EXTENT` bounds the playable disk; pushing islands farther will need a larger void floor and on-demand water-mesh streaming budget.
+- Chunk generation is single-threaded on the main thread — a Web Worker mesher would remove hitches when crossing into freshly generated island chunks.
 
 ---
 

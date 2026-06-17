@@ -19,7 +19,7 @@ python3 -m http.server 8080 --bind 127.0.0.1
 There is no linter and no build step in this repo. "Building" is just opening the HTML file.
 
 ### Tests
-- **Embedded self-test (preferred, works here):** open `http://127.0.0.1:8080/inner-wilds-game.html?test`. It runs the in-page QA suite and renders a panel showing `Self-test: NN/NN passed` (currently 43/43). This is the reliable smoke test in this environment.
+- **Embedded self-test (preferred, works here):** open `http://127.0.0.1:8080/inner-wilds-game.html?test`. It runs the in-page QA suite and renders a panel showing `Self-test: NN/NN passed` (currently 96/96). This is the reliable smoke test in this environment.
 - **`tests/` scripts are NOT runnable as-is:** `test-auto-play.js`, `test-auto.js`, `test-qa-visual.js`, and `run-test.sh` hardcode NixOS-only paths (`/nix/store/...chromium`, `/tmp/opencode/.../node_modules/playwright`). They are leftovers from the original author's NixOS box and will fail on this Ubuntu VM. To run an automated headless playthrough here, point Playwright/Puppeteer at the installed `google-chrome` instead of the hardcoded nix paths.
 
 ### Gotchas
