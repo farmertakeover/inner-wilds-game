@@ -20,10 +20,11 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | WASD | Move / Sprint (hold) |
 | Space | Jump (hold while moving = auto-jump) |
 | Left-click | Mine block / Attack creature |
-| Right-click | Place selected item |
+| Right-click | Place selected item / eat food / drink potion |
 | E | Interact (talk to NPCs, activate) |
 | F | Center breath (restore resolve) |
-| Tab | Toggle inventory |
+| Q | Drop selected stack |
+| Tab | Toggle inventory (Shift-click a hotbar slot to stash; Auto-sort button) |
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
 | M | Main menu |
@@ -325,6 +326,21 @@ Recover the Island Chart from the Cartographer by restoring the waystones. Decid
 - Hollowling monsters with combat
 - Music system with dual CC0 tracks
 - QA framework: 61 self-tests
+
+### Session 3 (Priority Enhancement Pass)
+Worked through the "Priority Issues to Fix" enhancement prompt. Self-test suite expanded from 61 to 80 checks (all passing).
+- **Combat depth (#9)**: swing cooldown (blocks mining mid-swing), knockback on hit, floating damage numbers (sprite that rises and fades), and a death animation (shrink + spin then particle burst).
+- **Monster AI (#15)**: `IDLE → CHASING → ATTACKING → FLEEING` state machine. Hollowlings chase at a set speed, deal contact damage on an attack cooldown when adjacent, and flee when below 30% HP.
+- **Survival (#10)**: hunger drains ~3× faster; five food items (`berries`, `mushroom`, `bread`, `stew`, `cooked_fish`) eaten via right-click restore hunger/HP/warmth; freezing (<20°) slows movement 20% and deals damage; standing within 3 blocks of a placed torch (or holding one) restores warmth at +15°/s.
+- **Crafting + tool tiers (#11, #13)**: 25 recipes including sticks, iron ingots, pickaxes/axes in three tiers, foods, potions, and armor. Recipe discovery toasts on first acquisition. Mining speed multiplier: hand 1×, wooden 1.5×, stone 2.5×, iron 4×.
+- **Inventory UX (#12)**: `Q` drops the selected stack, Shift-click stashes a hotbar slot, Auto-sort button packs items by type, hotbar shows stack counts.
+- **Sound FX (#14)**: filtered-noise footsteps (cadence scales with speed), water splash on entering/exiting water, rising-tone item pickup, and a pleasant triangle-wave chipping sound while mining.
+- **Third-person view (#2)**: `buildPlayerModel()` humanoid + `V` toggle. Camera pulls behind/above with block-clip avoidance; first-person hands hidden; the model holds the selected item.
+- **Visuals (#4, #5, #6, #7)**: additive sun-glow sprite, ~2000-point starfield that fades in at night, dawn/dusk horizon color ramp, sine-wave animated water surface, and placed torches now emit a warm `PointLight`.
+- **Save/load (#17)**: full `localStorage` save (inventory, hotbar, meters, quests, placed foliage, day time, trust/waystones) with auto-save every 30s and restore on launch (skipped under `?test`).
+- **Loading screen (#18)**: fullscreen overlay with a progress bar shown during world build.
+- **Dialogue (#20)**: choice buttons carry `data-key` and flash-highlight when their number key is pressed.
+- **Robust hits (#3)**: `scene.updateMatrixWorld(true)` before the agent raycast and a wider combat reach (6×BLOCK).
 
 ### Session 2 (Bug Fixes)
 - **Music loop cuts**: Added timeupdate fade at loop boundary (later removed — caused empty space)
