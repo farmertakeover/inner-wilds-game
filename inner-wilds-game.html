@@ -108,6 +108,14 @@ canvas{display:block}
 .inventory-hotbar{display:flex;gap:6px;justify-content:center;padding:12px 0;border-top:1px solid var(--line)}
 .inventory-hotbar .slot{width:48px;height:48px;cursor:pointer}
 
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(circle at 50% 35%,rgba(40,30,70,.45),rgba(6,8,14,.96) 60%);z-index:40;transition:opacity .5s}
+.loading.hidden{opacity:0;pointer-events:none}
+.loading-card{text-align:center;width:min(420px,80vw)}
+.loading-card h2{color:var(--gold);font-family:Georgia,serif;font-size:2rem;margin-bottom:6px}
+.loading-card p{color:var(--muted);font-size:.85rem;margin-bottom:16px}
+.loading-track{height:10px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--line);overflow:hidden}
+.loading-track span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 16px rgba(242,201,109,.4);transition:width .25s}
+.dialogue button.keyactive{filter:brightness(1.35);outline:2px solid var(--gold);transform:translateY(-1px)}
 .qa-results{position:absolute;left:50%;bottom:80px;width:min(680px,calc(100vw - 24px));transform:translateX(-50%);padding:12px 14px;border-radius:12px;pointer-events:none;font-size:.85rem;line-height:1.4}
 .qa-results strong{color:var(--gold)}
 .qa-results .pass{color:#9ff3d6}
@@ -119,6 +127,13 @@ canvas{display:block}
 </head>
 <body>
 <div id="app"></div>
+<div class="loading" id="loadingOverlay">
+  <div class="loading-card">
+    <h2>Inner Wilds</h2>
+    <p id="loadingLabel">Shaping the island…</p>
+    <div class="loading-track"><span id="loadingBar"></span></div>
+  </div>
+</div>
 <div class="hud">
   <div class="top">
     <section class="brand glass" id="brand"><h1>Inner Wilds</h1><p>Mine, craft, fight, and survive a living procedural world.</p></section>
@@ -1142,7 +1157,14 @@ const ui={
   inventoryHotbar:document.getElementById('inventoryHotbar'),closeInventory:document.getElementById('closeInventory'),
   sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
+  loadingOverlay:document.getElementById('loadingOverlay'),loadingBar:document.getElementById('loadingBar'),loadingLabel:document.getElementById('loadingLabel'),
 };
+
+function setLoadingProgress(pct,label){
+  if(ui.loadingBar)ui.loadingBar.style.width=THREE.MathUtils.clamp(pct,0,100)+'%';
+  if(label&&ui.loadingLabel)ui.loadingLabel.textContent=label;
+}
+function hideLoading(){if(ui.loadingOverlay)ui.loadingOverlay.classList.add('hidden')}
 
 function toast(text){
   const el=document.createElement('div');el.className='toast';el.textContent=text;
@@ -1162,10 +1184,16 @@ function showDialogue(speaker,text,choices=[{label:'Continue',action:hideDialogu
     const c=choices[i];
     const b=document.createElement('button');
     b.textContent=(i+1)+'. '+c.label;
+    b.dataset.key=String(i+1);
     b.addEventListener('click',c.action);
     ui.choices.appendChild(b);
   }
   ui.dialogue.classList.add('show');
+}
+// Briefly highlight a dialogue choice button when its number key is pressed.
+function flashDialogueKey(key){
+  const btn=ui.choices.querySelector(`button[data-key="${key}"]`);
+  if(btn){btn.classList.add('keyactive');setTimeout(()=>btn.classList.remove('keyactive'),140)}
 }
 
 const iconCache={};
@@ -2314,7 +2342,7 @@ window.addEventListener('keydown',e=>{
     // Dialogue choices take priority over hotbar when dialogue is open
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')){
       const idx=parseInt(k)-1;
-      if(idx<currentDialogueChoices.length){currentDialogueChoices[idx].action();return}
+      if(idx<currentDialogueChoices.length){flashDialogueKey(k);currentDialogueChoices[idx].action();return}
     }
     player.selectedSlot=parseInt(k)-1;renderQuickbar()
   }
@@ -2815,7 +2843,7 @@ function completeQuest(id,amount=1){
 // ============================================================
 
 function showMenuPanel(p){ui.menuMain.hidden=p!=='main';ui.menuSettings.hidden=p!=='settings'}
-function openMainMenu(){ui.start.classList.remove('hidden');showMenuPanel('main');exitGamePointerLock()}
+function openMainMenu(){if(state.started&&!TEST_MODE)saveGame();ui.start.classList.remove('hidden');showMenuPanel('main');exitGamePointerLock()}
 function closeMenuToGame(){
   if(!state.started)state.started=true;
   ui.start.classList.add('hidden');
@@ -3139,6 +3167,72 @@ function animate(){
 }
 
 // ============================================================
+// SAVE / LOAD
+// ============================================================
+const SAVE_KEY='iw_save_v1';
+const TEST_MODE=new URLSearchParams(location.search).has('test');
+
+function saveGame(){
+  try{
+    const data={
+      v:1,
+      pos:{x:player.pos.x,y:player.pos.y,z:player.pos.z},
+      inventory:player.inventory,
+      hotbar:player.hotbar,
+      selectedSlot:player.selectedSlot,
+      hp:player.hp,resolve:player.resolve,noise:player.noise,
+      hunger:player.hunger,temperature:player.temperature,
+      monstersRepelled:player.monstersRepelled,
+      dayTime,
+      trusted:[...player.trusted],
+      waystones:[...player.waystones],
+      unlockedRecipes:[...unlockedRecipes],
+      quests:quests.map(q=>({id:q.id,progress:q.progress})),
+      placedFoliage:placedFoliage.map(f=>({x:f.userData.blockPos.x,y:f.userData.blockPos.y,z:f.userData.blockPos.z,type:f.userData.placedType})),
+    };
+    localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+    return true;
+  }catch(e){return false}
+}
+
+function loadGame(){
+  let raw;
+  try{raw=localStorage.getItem(SAVE_KEY)}catch(e){return false}
+  if(!raw)return false;
+  let data;
+  try{data=JSON.parse(raw)}catch(e){return false}
+  if(!data||data.v!==1)return false;
+  if(data.pos)player.pos.set(data.pos.x,data.pos.y,data.pos.z);
+  if(data.inventory)player.inventory=data.inventory;
+  if(Array.isArray(data.hotbar))player.hotbar=data.hotbar;
+  if(typeof data.selectedSlot==='number')player.selectedSlot=data.selectedSlot;
+  if(typeof data.hp==='number')player.hp=data.hp;
+  if(typeof data.resolve==='number')player.resolve=data.resolve;
+  if(typeof data.noise==='number')player.noise=data.noise;
+  if(typeof data.hunger==='number')player.hunger=data.hunger;
+  if(typeof data.temperature==='number')player.temperature=data.temperature;
+  if(typeof data.monstersRepelled==='number')player.monstersRepelled=data.monstersRepelled;
+  if(typeof data.dayTime==='number')dayTime=data.dayTime;
+  if(Array.isArray(data.trusted))player.trusted=new Set(data.trusted);
+  if(Array.isArray(data.waystones))player.waystones=new Set(data.waystones);
+  if(Array.isArray(data.unlockedRecipes))data.unlockedRecipes.forEach(n=>unlockedRecipes.add(n));
+  if(Array.isArray(data.quests))for(const sq of data.quests){const q=quests.find(x=>x.id===sq.id);if(q&&typeof sq.progress==='number')q.progress=sq.progress}
+  if(Array.isArray(data.placedFoliage)){
+    for(const f of placedFoliage.slice()){scene.remove(f);}
+    placedFoliage.length=0;
+    for(const pf of data.placedFoliage)addPlacedFoliage(pf.x,pf.y,pf.z,pf.type);
+  }
+  renderQuickbar();renderQuests();renderInventory();updateMeters();
+  return true;
+}
+
+let autoSaveTimer=null;
+function startAutoSave(){
+  if(autoSaveTimer||TEST_MODE)return;
+  autoSaveTimer=setInterval(()=>{if(state.started)saveGame()},30000);
+}
+
+// ============================================================
 // INIT
 // ============================================================
 function init(){
@@ -3153,18 +3247,22 @@ function init(){
   if(sfxV){setSfxVolume(parseInt(sfxV));ui.sfxSlider.value=sfxV;ui.sfxValue.textContent=sfxV+'%'}
   
   // Generate initial chunks
+  setLoadingProgress(10,'Shaping the island…');
   rebuildVisibleChunks(true);
   
   // Build water
+  setLoadingProgress(45,'Filling the seas…');
   buildWaterMesh();
   buildVoidFloor();
   
   // Build ambient
+  setLoadingProgress(65,'Seeding life…');
   buildAmbient();
   buildWeather();
   buildBreakOverlay();
   buildFirstPersonHands();
   buildPlayerModel();
+  setLoadingProgress(85,'Hanging the stars…');
   buildCelestialBodies();
   
   // Place agents
@@ -3181,6 +3279,12 @@ function init(){
   // Find spawn
   player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
   
+  // Restore a previous session if one exists (never during automated tests)
+  if(!TEST_MODE){
+    const loaded=loadGame();
+    if(loaded)toast('Welcome back — progress restored.');
+  }
+  
   renderQuickbar();
   renderQuests();
   updateMeters();
@@ -3193,6 +3297,9 @@ function init(){
   },{once:true});
   
   recipeDiscoveryReady=true;
+  setLoadingProgress(100,'Ready');
+  setTimeout(hideLoading,300);
+  startAutoSave();
   animate();
 }
 
