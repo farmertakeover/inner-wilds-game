@@ -118,7 +118,7 @@ Read `tests/test-auto-play.js` to understand the HTTP playthrough system.
 
 ## Testing After Each Change
 
-1. Load `inner-wilds-game.html?test` — must show "Self-test: 61/61 passed" (or updated count)
+1. Load `inner-wilds-game.html?test` — must show "Self-test: 74/74 passed" (or updated count)
 2. Run `GAME_URL=http://127.0.0.1:8000/inner-wilds-game.html node tests/test-auto-play.js` — must exit cleanly with no crashes
 3. Manually verify the feature works in a headed browser
 
@@ -343,6 +343,27 @@ Recover the Island Chart from the Cartographer by restoring the waystones. Decid
 - **Creature damage**: Removed type==='monster' restriction, all agents hittable
 - **Firefly illumination**: Increased to 4.5 intensity, range 16
 - **Arm redesign**: Bottom corners, smaller, pointing upward, depthTest removed
+
+### Session 3 (Enhancement Prompt Pass)
+Addressed the bulk of the "Priority Issues to Fix" list from the enhancement prompt:
+- **Hands visibility (#1)**: Arm width 0.16, hand radius 0.12, `depthTest:false` so hands never clip into geometry.
+- **Third-person view (#2)**: `buildPlayerModel()` humanoid avatar, `V` toggles `thirdPerson`. Camera orbits behind/above with terrain pull-in; hands hide; avatar holds the selected item; aim ray uses player eye + look angle.
+- **Reliable creature hits (#3)**: `scene.updateMatrixWorld(true)` before agent intersection; combat reach widened to 6×BLOCK.
+- **Placed torch light (#4)**: Placed torches emit a warm `PointLight`; mining returns the torch item.
+- **Celestial polish (#5)**: Additive sun-glow sprite parented to the sun; 2000-point starfield that fades in at night and follows the player.
+- **Wavy water (#7)**: Sin-based per-vertex ripple animation each frame; translucent `opacity:0.6` surface.
+- **Combat depth (#9)**: Swing cooldown (blocks mining mid-swing), knockback impulse, floating damage numbers, monster death shrink-tween + particle burst.
+- **Survival meaning (#10)**: Hunger drains ~3× faster; 5 food items (berries, mushroom, bread, stew, health potion) with right-click-to-eat; freezing (<20°) slows movement 20%; standing within 3 blocks of a torch/amber lamp restores warmth.
+- **Crafting expansion (#11)**: 26 recipes incl. sticks, iron ingot, pickaxes/axes (3 tiers), bowl/bottle, food, armor, decor; recipe-unlock toasts on first-time ingredient pickup.
+- **Inventory UX (#12)**: `Q` drops the held stack, Shift-click moves stacks between bag and hotbar, Auto-sort button, hotbar stack counts.
+- **Tool tiers (#13)**: Mining-speed multipliers (hand 1× → iron 4×) with axe/pickaxe block affinity; tool damage vs monsters.
+- **Sound FX (#14)**: Filtered-noise footsteps, water-entry splash, item-pickup chime, softer mining chip.
+- **Monster AI (#15)**: IDLE → CHASING (3 m/s) → ATTACKING (contact damage within 2 blocks, reduced by armor) → FLEEING (<30% HP) state machine.
+- **Save/load (#17)**: Expanded localStorage save (inventory, hotbar, meters, quests, placed foliage, day time, discovered recipes); autosave every 30s; loads on init (skipped in `?test`).
+- **Loading screen (#18)**: Fullscreen overlay with progress bar shown during world build, then fades out.
+- **Anti-tunnel (#19)**: Second-pass downward ground snap when falling faster than 20 units/frame.
+- **Dialogue keys (#20)**: Choice buttons carry `data-key` and flash when the matching number/Enter key is pressed.
+- **QA**: Self-test suite grew from 61 → 74 with coverage for the above.
 
 ---
 
