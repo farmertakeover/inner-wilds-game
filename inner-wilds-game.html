@@ -1081,6 +1081,7 @@ const player={
   equippedWeapon:null,
   mining:null,
   swingCooldown:0,
+  wasInWater:false,
   primaryHeld:false,
   trusted:new Set(),
   talked:new Set(),
@@ -2126,6 +2127,29 @@ function playSound(freq,duration,type='sine',vol=0.15){
 
 function playPlaceSound(){playSound(400,0.1,'sine',0.1)}
 function playHitSound(){playSound(200,0.2,'sawtooth',0.12)}
+
+// Short burst of filtered noise, used for organic SFX (footsteps, splashes, chipping).
+function playNoiseBurst(duration=0.12,vol=0.12,filterType='lowpass',filterFreq=800,q=1){
+  if(!audioCtx)return;
+  const frames=Math.floor(audioCtx.sampleRate*duration);
+  const buffer=audioCtx.createBuffer(1,frames,audioCtx.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<frames;i++)data[i]=(Math.random()*2-1)*(1-i/frames);
+  const src=audioCtx.createBufferSource();src.buffer=buffer;
+  const filter=audioCtx.createBiquadFilter();filter.type=filterType;filter.frequency.value=filterFreq;filter.Q.value=q;
+  const gain=audioCtx.createGain();gain.gain.value=vol;
+  gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+duration);
+  src.connect(filter);filter.connect(gain);gain.connect(masterGain);
+  src.start();src.stop(audioCtx.currentTime+duration);
+}
+function playFootstep(){playNoiseBurst(0.1,0.08,'lowpass',360+Math.random()*120,1.2)}
+function playSplash(){playNoiseBurst(0.32,0.14,'highpass',900+Math.random()*300,0.8)}
+function playMineChip(){playNoiseBurst(0.09,0.1,'bandpass',1400+Math.random()*500,3)}
+function playItemPickupSound(){
+  if(!audioCtx)return;
+  playSound(520,0.08,'sine',0.09);
+  setTimeout(()=>playSound(780,0.1,'sine',0.08),60);
+}
 function playAmbient(){
   if(!audioCtx)return;
   const t=dayTime*100;
@@ -2399,6 +2423,7 @@ function startMining(){
       else invType=13;
       addToInventory(invType);
       renderQuickbar();
+      playItemPickupSound();
       const pColor=invType===5?0xff8800:invType===13?0x6da65e:invType===14?0xd44a4a:invType===25?0xb07ac0:0xfbe87a;
       spawnParticle(pos,pColor,8,2);
       return;
@@ -2414,6 +2439,7 @@ function startMining(){
         spawnParticle(pos,0xdd88ff,10,3);
         addToInventory(25);
         renderQuickbar();
+        playItemPickupSound();
         toast('Caught a butterfly!');
       }
       return;
@@ -2429,6 +2455,7 @@ function startMining(){
       hideInstance(fireflyInstanced,instId);
       addToInventory(26);
       renderQuickbar();
+      playItemPickupSound();
       spawnParticle(position,0xffee88,12,3);
       toast('Caught a firefly!');
       return;
@@ -2473,7 +2500,7 @@ function updateMining(dt){
     spawnParticle(new THREE.Vector3((wx+.5)*BLOCK,(wy+.5)*BLOCK,(wz+.5)*BLOCK),BT[minedType]?.color||0xf2c96d,18,4);
     addToInventory(minedType);
     player.noise=Math.min(100,player.noise+2+player.mining.duration);
-    playPlaceSound();
+    playMineChip();
     // Remove any placed foliage sprite at this position
     removePlacedFoliageAt(wx,wy,wz);
     player.mining=null;
@@ -2788,6 +2815,7 @@ const PLAYER_HEIGHT = 4.2;
 const PLAYER_EYE_HEIGHT = 3.8;
 let coyoteTime = 0;
 const COYOTE_TIME_MAX = 0.1;
+let footTimer = 0;
 
 function jumpHeld(){return keys.has(' ')||keys.has('spacebar')}
 
@@ -2859,6 +2887,14 @@ function updatePlayer(dt){
   const moving=move.lengthSq()>0;
   const sprint=keys.has('shift');
   const inWater=isPlayerInWater();
+  // Splash when crossing the water surface.
+  if(inWater!==player.wasInWater){playSplash();player.wasInWater=inWater}
+  // Footsteps timed to gait; faster while sprinting.
+  if(moving&&player.grounded&&!inWater){
+    footTimer+=dt;
+    const interval=sprint?0.28:0.44;
+    if(footTimer>=interval){footTimer=0;playFootstep()}
+  } else footTimer=0;
   if(jumpHeld()&&moving)tryJump(inWater);
   
    if(moving){
@@ -3370,6 +3406,7 @@ if(new URLSearchParams(location.search).has('test')){
         player.hotbar=oldHotbar;player.selectedSlot=oldSlot;player.inventory=oldInv;renderQuickbar();
         check('Inventory drop, quick-move, and auto-sort work',dropped&&moved&&sorted);
       }
+      check('Footstep, splash, pickup, and chipping sounds defined',[playFootstep,playSplash,playItemPickupSound,playMineChip,playNoiseBurst].every(f=>typeof f==='function'));
       {
         const m=agents.find(a=>a.userData.agent.type==='monster');
         if(m){
