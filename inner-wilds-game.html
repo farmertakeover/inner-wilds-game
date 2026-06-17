@@ -25,6 +25,10 @@ canvas{display:block}
 .journal{position:absolute;left:12px;top:140px;width:min(320px,calc(100vw - 24px));padding:12px;border-radius:12px}
 .journal h2{margin:0 0 6px;color:var(--gold);font-family:Georgia,serif;font-size:.95rem}
 .quest{margin-bottom:6px;color:var(--muted);font-size:.82rem;line-height:1.35}
+.quest strong{color:var(--ink)}
+.quest-done{opacity:.6}
+.quest-done strong{color:var(--teal)}
+.inventory-journal{display:grid;gap:6px;margin:8px 0 4px;padding:10px;border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(0,0,0,.18)}
 .dialogue{position:absolute;left:50%;bottom:80px;width:min(700px,calc(100vw - 24px));transform:translateX(-50%) translateY(8px);padding:14px 16px;border-radius:16px;opacity:0;transition:opacity .18s,transform .18s;pointer-events:auto}
 .dialogue.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .dialogue strong{display:block;margin-bottom:4px;color:var(--gold);font-family:Georgia,serif}
@@ -147,7 +151,6 @@ canvas{display:block}
       <div class="meter"><span>Temp</span><div class="bar"><span id="tempBar"></span></div><b id="tempText">85</b></div>
     </section>
   </div>
-  <section class="journal glass"><h2>Journal</h2><div id="questList"></div></section>
   <div class="dialogue glass" id="dialogue"><strong id="speaker"></strong><span id="dialogueText"></span><div class="choices" id="choices"></div></div>
   <div class="banner" id="banner"><h2 id="bannerTitle"></h2><p id="bannerText"></p></div>
   <div class="crosshair" aria-hidden="true"></div>
@@ -197,6 +200,8 @@ canvas{display:block}
     <p class="setting-help" style="margin-bottom:8px">Shift-click to move items between bag and hotbar. Q drops the selected stack.</p>
     <div class="inventory-grid" id="inventoryGrid"></div>
     <div class="inventory-hotbar" id="inventoryHotbar"></div>
+    <h2 style="margin-top:16px">Journal</h2>
+    <div id="questList" class="inventory-journal"></div>
     <div class="menu-actions" style="justify-content:space-between">
       <button id="sortInventory" class="secondary">Auto-sort</button>
       <button id="closeInventory">Close</button>
@@ -218,7 +223,8 @@ canvas{display:block}
         <div><strong>Dormant Threat</strong><span>Hollowlings guard old mistakes. They stay asleep unless you choose to provoke them.</span></div>
       </div>
       <div class="menu-actions">
-        <button id="startBtn">Start Game</button>
+        <button id="newGameBtn">New Game / Create World</button>
+        <button class="secondary" id="continueBtn">Continue</button>
         <button class="secondary" id="settingsBtn">Settings</button>
         <button class="secondary" id="menuNotesBtn">Field Notes</button>
       </div>
@@ -242,10 +248,16 @@ canvas{display:block}
         <span class="setting-head"><strong>SFX Volume</strong><output id="sfxValue">70%</output></span>
         <input id="sfxSlider" type="range" min="0" max="100" step="5" value="70">
       </label>
-      <p class="setting-help">Higher render distance shows more terrain but may reduce FPS. Adjust for your machine.</p>
+      <div class="setting-row">
+        <span class="setting-head"><strong>Autosave</strong><output id="autosaveValue">On</output></span>
+        <div class="menu-actions" style="margin-top:0">
+          <button class="secondary" id="autosaveToggle" type="button">Toggle Autosave</button>
+          <button class="secondary" id="manualSaveBtn" type="button">Save Now</button>
+        </div>
+      </div>
+      <p class="setting-help">Autosave writes your expedition every 30s. Higher render distance shows more terrain but may reduce FPS.</p>
       <div class="menu-actions">
         <button id="backMenuBtn">Back</button>
-        <button class="secondary" id="settingsStartBtn">Start Game</button>
       </div>
     </div>
   </section>
@@ -1120,6 +1132,9 @@ function updateCelestialBodies(){
   if(sunGlow)sunGlow.material.opacity=Math.max(0,sunY)*0.9;
 }
 
+// Autosave preference (toggled in Settings, persisted in localStorage).
+let autosaveEnabled=true;
+
 // Day/night state
 let dayTime=0.3; // 0-1, .25=sunrise, .5=noon, .75=sunset
 // Minecraft-length cycle: a full day/night is ~20 real minutes (1200s).
@@ -1181,14 +1196,31 @@ const player={
   monstersRepelled:0,
 };
 
+// RPG-style quest log. Quests carry a state (locked → active → done). Only one
+// quest is active at the start; the rest are "picked up" as the story unfolds
+// (talking to the Cartographer, waking a guardian, reaching new land, etc.).
 const quests=[
-  {id:'cartographer',title:'Recover the island chart',target:1,progress:0,hint:'Ask the blue-robed Cartographer why the route was erased.'},
-  {id:'shape',title:'Rebuild a safe route',target:10,progress:0,hint:'Remove or place 10 blocks to reopen paths through the ruins.'},
-  {id:'animal',title:'Earn animal trust',target:2,progress:0,hint:'Approach quietly and press E.'},
-  {id:'monster',title:'Repel awakened Hollowlings',target:3,progress:0,hint:'Strike a sleeping Hollowling only when you are ready.'},
-  {id:'waystone',title:'Restore two waystones',target:2,progress:0,hint:'Use the patient choice to relight the North and Ash waystones.'},
-  {id:'craft',title:'Craft a tool',target:1,progress:0,hint:'Press C to open crafting.'},
+  {id:'cartographer',title:'Get your bearings',target:1,progress:0,state:'active',startState:'active',hint:'Find the blue-robed Cartographer near the center of the Survey Isle and speak (E).'},
+  {id:'waystone',title:'Relight the waystones',target:3,progress:0,state:'locked',startState:'locked',hint:'Patiently restore the three waystones — two on the home isle, one across the sea.'},
+  {id:'explore',title:'Cross the open water',target:1,progress:0,state:'locked',startState:'locked',hint:'Swim out and set foot on one of the satellite islands.'},
+  {id:'craft',title:'Forge your first tool',target:1,progress:0,state:'locked',startState:'locked',hint:'Open crafting (C) and build a tool.'},
+  {id:'animal',title:"Earn an animal's trust",target:2,progress:0,state:'locked',startState:'locked',hint:'Move quietly and press E near the Glass Elk or Lantern Hare.'},
+  {id:'monster',title:'Repel the Hollowlings',target:3,progress:0,state:'locked',startState:'locked',hint:'Defend yourself once a dormant guardian wakes.'},
 ];
+function giveQuest(id){
+  const q=quests.find(x=>x.id===id);
+  if(!q||q.state!=='locked')return;
+  q.state='active';
+  toast('New quest: '+q.title);
+  if(typeof showBanner==='function')showBanner('New Quest',q.title);
+  renderQuests();
+}
+function giveStartingQuests(){renderQuests()}
+function resetQuests(){quests.forEach(q=>{q.progress=0;q.state=q.startState})}
+// Story chaining when a quest is finished.
+function onQuestComplete(id){
+  if(id==='cartographer'){giveQuest('waystone');giveQuest('explore');giveQuest('craft');giveQuest('animal')}
+}
 
 // ============================================================
 // UI
@@ -1207,10 +1239,12 @@ const ui={
   mineMeter:document.getElementById('mineMeter'),mineFill:document.getElementById('mineFill'),mineText:document.getElementById('mineText'),
   quickbar:document.getElementById('quickbar'),
   notes:document.getElementById('notes'),closeNotes:document.getElementById('closeNotes'),
-  start:document.getElementById('start'),startBtn:document.getElementById('startBtn'),
+  start:document.getElementById('start'),
+  newGameBtn:document.getElementById('newGameBtn'),continueBtn:document.getElementById('continueBtn'),
   menuMain:document.getElementById('menuMain'),menuSettings:document.getElementById('menuSettings'),
   settingsBtn:document.getElementById('settingsBtn'),backMenuBtn:document.getElementById('backMenuBtn'),
-  settingsStartBtn:document.getElementById('settingsStartBtn'),menuNotesBtn:document.getElementById('menuNotesBtn'),
+  menuNotesBtn:document.getElementById('menuNotesBtn'),
+  autosaveToggle:document.getElementById('autosaveToggle'),autosaveValue:document.getElementById('autosaveValue'),manualSaveBtn:document.getElementById('manualSaveBtn'),
   sensitivitySlider:document.getElementById('sensitivitySlider'),sensitivityValue:document.getElementById('sensitivityValue'),
   renderDistSlider:document.getElementById('renderDistSlider'),renderDistValue:document.getElementById('renderDistValue'),
   musicSlider:document.getElementById('musicSlider'),musicValue:document.getElementById('musicValue'),
@@ -1359,7 +1393,13 @@ function renderQuickbar(){
 }
 
 function renderQuests(){
-  ui.questList.innerHTML=quests.map(q=>`<div class="quest"><strong>${q.title}</strong><br><span>${q.progress}/${q.target} - ${q.hint}</span></div>`).join('');
+  if(!ui.questList)return;
+  const visible=quests.filter(q=>q.state!=='locked');
+  if(!visible.length){ui.questList.innerHTML='<div class="quest"><span>No active quests yet. Explore the islands to uncover your story.</span></div>';return}
+  ui.questList.innerHTML=visible.map(q=>{
+    const done=q.state==='done';
+    return `<div class="quest${done?' quest-done':''}"><strong>${done?'✓ ':''}${q.title}</strong><br><span>${q.progress}/${q.target} — ${q.hint}</span></div>`;
+  }).join('');
 }
 
 function updateMeters(){
@@ -2802,6 +2842,7 @@ function strikeMonster(agent){
   if(data.dying>0)return;
   const weapon=player.hotbar[player.selectedSlot];
   const damage=weaponDamage(weapon);
+  if(!data.awake)giveQuest('monster'); // picking up the quest the moment a guardian wakes
   data.awake=true;
   data.hp-=damage;
   player.noise=Math.min(100,player.noise+5);
@@ -2868,9 +2909,16 @@ function interact(){
 
 function completeQuest(id,amount=1){
   const q=quests.find(x=>x.id===id);
-  if(!q||q.progress>=q.target)return;
+  // Only quests you have actually picked up (active) make progress.
+  if(!q||q.state!=='active'||q.progress>=q.target)return;
   q.progress=Math.min(q.target,q.progress+amount);
-  if(q.progress===q.target){toast('Quest: '+q.title);player.resolve=Math.min(100,player.resolve+10)}
+  if(q.progress>=q.target){
+    q.state='done';
+    toast('Quest complete: '+q.title);
+    if(typeof showBanner==='function')showBanner('Quest Complete',q.title);
+    player.resolve=Math.min(100,player.resolve+10);
+    onQuestComplete(id);
+  }
   renderQuests();
 }
 
@@ -2879,17 +2927,61 @@ function completeQuest(id,amount=1){
 // ============================================================
 
 function showMenuPanel(p){ui.menuMain.hidden=p!=='main';ui.menuSettings.hidden=p!=='settings'}
-function openMainMenu(){ui.start.classList.remove('hidden');showMenuPanel('main');exitGamePointerLock()}
+function refreshMenuState(){
+  // Continue is only available when a save exists; relabel New Game once playing.
+  if(ui.continueBtn){ui.continueBtn.disabled=!hasSave();ui.continueBtn.style.opacity=hasSave()?'':'.45'}
+  if(ui.newGameBtn)ui.newGameBtn.textContent=state.started?'Restart World':'New Game / Create World';
+  if(ui.autosaveValue)ui.autosaveValue.textContent=autosaveEnabled?'On':'Off';
+}
+function openMainMenu(){ui.start.classList.remove('hidden');showMenuPanel('main');refreshMenuState();exitGamePointerLock()}
 function closeMenuToGame(){
   if(!state.started)state.started=true;
   ui.start.classList.add('hidden');
   requestGamePointerLock();
 }
+function hasSave(){try{return !!localStorage.getItem(SAVE_KEY)}catch(e){return false}}
+function setAutosave(on){
+  autosaveEnabled=on;
+  try{localStorage.setItem('iw_autosave',on?'1':'0')}catch(e){}
+  if(ui.autosaveValue)ui.autosaveValue.textContent=on?'On':'Off';
+  toast('Autosave '+(on?'enabled':'disabled'));
+}
+// Reset all session state to a fresh expedition.
+function defaultPlayerState(){
+  player.velY=0;player.hp=100;player.resolve=100;player.noise=0;player.hunger=100;player.temperature=85;
+  player.inventory={1:0,2:0,3:0,4:0,9:0,10:0,11:0,12:0};
+  player.selectedSlot=0;player.hotbar=[1,2,3,4,9,10,0,0,0];
+  player.trusted=new Set();player.talked=new Set();player.waystones=new Set();player.discovered=new Set();player.monstersRepelled=0;
+  for(const f of placedFoliage.slice())scene.remove(f);placedFoliage.length=0;
+  dayTime=0.3;yaw=0;pitch=0;
+  resetQuests();
+  player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
+}
+function newGame(){
+  try{localStorage.removeItem(SAVE_KEY)}catch(e){}
+  defaultPlayerState();
+  rebuildVisibleChunks(true);buildWaterMesh();
+  renderQuickbar();renderQuests();updateMeters();updateHandItem();
+  toast('A new expedition begins.');
+  closeMenuToGame();
+}
+function continueGame(){
+  if(hasSave()&&loadGame()){
+    rebuildVisibleChunks(true);buildWaterMesh();
+    const surf=groundYAt(player.pos.x,player.pos.z);
+    if(surf>0&&(player.pos.y<surf||isBuried(player.pos.x,player.pos.y,player.pos.z)))player.pos.y=surf+BLOCK*.5;
+    renderQuickbar();renderQuests();updateMeters();updateHandItem();
+    toast('Restored your last expedition.');
+  } else toast('No saved expedition found.');
+  closeMenuToGame();
+}
 
-ui.startBtn.addEventListener('click',closeMenuToGame);
-ui.settingsStartBtn.addEventListener('click',closeMenuToGame);
+ui.newGameBtn.addEventListener('click',newGame);
+ui.continueBtn.addEventListener('click',continueGame);
 ui.settingsBtn.addEventListener('click',()=>showMenuPanel('settings'));
 ui.backMenuBtn.addEventListener('click',()=>showMenuPanel('main'));
+ui.autosaveToggle.addEventListener('click',()=>setAutosave(!autosaveEnabled));
+ui.manualSaveBtn.addEventListener('click',()=>{const ok=saveGame();toast(ok?'Game saved.':'Save failed.')});
 ui.menuNotesBtn.addEventListener('click',()=>{ui.notes.classList.add('open');exitGamePointerLock()});
 ui.closeNotes.addEventListener('click',()=>{ui.notes.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
 ui.closeCrafting.addEventListener('click',()=>{showCrafting=false;ui.craftingPanel.classList.remove('open');if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()});
@@ -2966,6 +3058,16 @@ function canStandAt(x,z,fromY){
   if(floor<=0)return false;
   const ceiling=ceilingYAt(x,z,floor+.01);
   return floor<=fromY+BLOCK*1.1 && (ceiling===Infinity || ceiling-floor >= PLAYER_HEIGHT);
+}
+
+// True when a solid (non-liquid, non-transparent) block overlaps the player's body.
+function isBuried(x,y,z){
+  const vx=worldToVoxel(x),vz=worldToVoxel(z);
+  for(const oy of [y+BLOCK*.6,y+BLOCK*1.4]){
+    const b=getBlock(vx,Math.floor(oy/BLOCK),vz);
+    if(b&&!LIQUID_TYPES.has(String(b))&&!BT[b]?.transparent)return true;
+  }
+  return false;
 }
 
 function wouldHitCeiling(x,z,y){
@@ -3104,6 +3206,25 @@ function updatePlayer(dt){
   const maxW=WORLD_EXTENT*BLOCK;
   player.pos.x=THREE.MathUtils.clamp(player.pos.x,-maxW,maxW);
   player.pos.z=THREE.MathUtils.clamp(player.pos.z,-maxW,maxW);
+
+  // Anti-tunnel: if the body ends up embedded in solid terrain, lift to the surface.
+  if(isBuried(player.pos.x,player.pos.y,player.pos.z)){
+    const surf=groundYAt(player.pos.x,player.pos.z);
+    if(surf>0){player.pos.y=surf;player.velY=0;player.grounded=true;coyoteTime=COYOTE_TIME_MAX}
+  }
+  // "Cross the open water" — completes when you stand on a satellite island.
+  const exq=quests.find(q=>q.id==='explore');
+  if(exq&&exq.state==='active'&&player.grounded){
+    const pvx=worldToVoxel(player.pos.x),pvz=worldToVoxel(player.pos.z);
+    for(let i=1;i<ISLANDS.length;i++){const is=ISLANDS[i];if(Math.hypot(pvx-is.x,pvz-is.z)<is.r-2){completeQuest('explore');break}}
+  }
+  // Void catch: falling below the world drops you back onto solid ground.
+  if(player.pos.y<-BLOCK*4){
+    const surf=groundYAt(player.pos.x,player.pos.z);
+    player.pos.y=(surf>0?surf:groundYAt(0,0)||BLOCK*6)+BLOCK*1.5;
+    player.velY=0;player.grounded=false;
+    if(typeof toast==='function')toast('The void slips away — you wash back onto solid ground.');
+  }
 }
 
 function updateSurvival(dt){
@@ -3230,9 +3351,12 @@ function renderFrame(){
 const SAVE_KEY='iw_save_v1';
 function saveGame(){
   try{
+    // Never persist a position below the surface (prevents resuming underground).
+    const surf=groundYAt(player.pos.x,player.pos.z);
+    const safeY=surf>0?Math.max(player.pos.y,surf):player.pos.y;
     const data={
       v:1,
-      pos:[player.pos.x,player.pos.y,player.pos.z],
+      pos:[player.pos.x,safeY,player.pos.z],
       yaw,pitch,dayTime,
       inventory:player.inventory,
       hotbar:player.hotbar,
@@ -3242,7 +3366,7 @@ function saveGame(){
       discovered:[...player.discovered],
       waystones:[...player.waystones],
       trusted:[...player.trusted],
-      quests:quests.map(q=>({id:q.id,progress:q.progress})),
+      quests:quests.map(q=>({id:q.id,progress:q.progress,state:q.state})),
       placedFoliage:placedFoliage.map(f=>({p:[f.userData.blockPos.x,f.userData.blockPos.y,f.userData.blockPos.z],t:f.userData.placedType})),
     };
     localStorage.setItem(SAVE_KEY,JSON.stringify(data));
@@ -3266,7 +3390,7 @@ function loadGame(){
     if(Array.isArray(d.discovered))player.discovered=new Set(d.discovered);
     if(Array.isArray(d.waystones))player.waystones=new Set(d.waystones);
     if(Array.isArray(d.trusted))player.trusted=new Set(d.trusted);
-    if(Array.isArray(d.quests))d.quests.forEach(sq=>{const q=quests.find(x=>x.id===sq.id);if(q&&typeof sq.progress==='number')q.progress=sq.progress});
+    if(Array.isArray(d.quests))d.quests.forEach(sq=>{const q=quests.find(x=>x.id===sq.id);if(q){if(typeof sq.progress==='number')q.progress=sq.progress;if(typeof sq.state==='string')q.state=sq.state}});
     if(Array.isArray(d.placedFoliage)){
       for(const f of placedFoliage.slice())scene.remove(f);
       placedFoliage.length=0;
@@ -3329,15 +3453,15 @@ function init(){
   // Find spawn
   player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
 
-  // Restore a previous session if one exists (skipped under the ?test harness for determinism).
+  // The world starts at a fresh spawn; the player picks New Game or Continue
+  // from the menu (Continue restores the save). Test harness skips the menu.
   const isTest=new URLSearchParams(location.search).has('test');
-  if(!isTest&&loadGame()){
-    rebuildVisibleChunks(true);
-    buildWaterMesh();
-    toast('Restored your last expedition.');
-  }
-  // Autosave periodically.
-  if(!isTest)setInterval(()=>{if(state.started)saveGame()},30000);
+  const asPref=localStorage.getItem('iw_autosave');
+  if(asPref!==null)autosaveEnabled=asPref==='1';
+  // Autosave periodically while playing, when enabled.
+  if(!isTest)setInterval(()=>{if(state.started&&autosaveEnabled)saveGame()},30000);
+  refreshMenuState();
+  giveStartingQuests();
   
   renderQuickbar();
   renderQuests();
@@ -3682,6 +3806,47 @@ if(new URLSearchParams(location.search).has('test')){
           check('Monster AI state machine (attack/flee)',attacking&&fleeing);
         } else check('Monster AI state machine (attack/flee)',false,'no monster');
       }
+      // --- v0.4.0 Archipelago Update coverage ---
+      check('Version constant + badge present',/^v\d+\.\d+\.\d+$/.test(GAME_VERSION)&&document.getElementById('versionBadge')?.textContent===GAME_VERSION);
+      check('Day/night cycle is Minecraft-length (~20 min)',Math.abs(DAY_CYCLE_SPEED-1/1200)<1e-6);
+      check('Archipelago has multiple islands',Array.isArray(ISLANDS)&&ISLANDS.length>=3&&ISLANDS.some(i=>i.x!==0||i.z!==0));
+      check('Island falloff peaks at a satellite center',islandFalloff(ISLANDS[1].x,ISLANDS[1].z)>0.9);
+      check('Block textures have depth bevel',typeof applyBlockDepth==='function'&&String(drawBlockTexture).includes('applyBlockDepth'));
+      check('Player avatar is humanoid (arms/legs/hands)',Boolean(playerModel?.userData.lArm&&playerModel.userData.rLeg)&&playerModel.children.length>10);
+      {
+        // RPG quests: a fresh expedition has exactly one active quest, rest locked.
+        const snapshot=quests.map(q=>[q.state,q.progress]);
+        resetQuests();
+        const active=quests.filter(q=>q.state==='active').length,locked=quests.filter(q=>q.state==='locked').length;
+        const pass=active===1&&locked>=4&&quests[0].state==='active';
+        snapshot.forEach(([st,pr],i)=>{quests[i].state=st;quests[i].progress=pr});renderQuests();
+        check('Quests start RPG-gated (1 active, rest locked)',pass);
+      }
+      {
+        // giveQuest reveals a locked quest; completeQuest chains follow-ups.
+        const wq=quests.find(q=>q.id==='waystone'),oldW=wq.state,oldProg=quests.map(q=>[q.id,q.state,q.progress]);
+        giveQuest('waystone');const revealed=wq.state==='active';
+        const cq=quests.find(q=>q.id==='cartographer'),oldC=cq.state,oldCp=cq.progress;cq.state='active';cq.progress=0;
+        completeQuest('cartographer');const chained=quests.find(q=>q.id==='animal').state!=='locked'&&cq.state==='done';
+        oldProg.forEach(([id,st,pr])=>{const q=quests.find(x=>x.id===id);q.state=st;q.progress=pr});renderQuests();
+        check('Quest pickup + story chaining works',revealed&&chained);
+      }
+      check('Journal lives inside the Tab/inventory popup',document.getElementById('inventoryPanel')?.contains(ui.questList));
+      check('On-screen journal HUD removed',!document.querySelector('.hud > .journal'));
+      {
+        // Anti-tunnel recovery: a buried player is lifted back to the surface.
+        const oldPos=player.pos.clone(),oldVel=player.velY;
+        const vx=worldToVoxel(player.pos.x),vz=worldToVoxel(player.pos.z);
+        const surf=groundYAt(player.pos.x,player.pos.z);
+        player.pos.y=Math.max(0,surf-BLOCK*3);player.velY=0;
+        const buried=isBuried(player.pos.x,player.pos.y,player.pos.z);
+        updatePlayer(0.0001);
+        const recovered=player.pos.y>=surf-0.001;
+        player.pos.copy(oldPos);player.velY=oldVel;
+        check('Buried player is lifted to the surface',buried&&recovered);
+      }
+      check('Menu offers New Game / Continue + autosave controls',Boolean(document.getElementById('newGameBtn')&&document.getElementById('continueBtn')&&document.getElementById('autosaveToggle')&&document.getElementById('manualSaveBtn'))&&typeof setAutosave==='function');
+      check('Save guards against persisting underground',String(saveGame).includes('safeY'));
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
     ui.qaPanel.hidden=false;
