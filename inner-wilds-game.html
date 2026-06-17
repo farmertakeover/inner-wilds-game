@@ -618,10 +618,12 @@ function buildWaterMesh(){
   geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
   geo.setIndex(indices);
   geo.computeBoundingSphere();
+  // Keep a copy of the resting surface so we can animate ripples each frame.
+  geo.userData.basePositions=Float32Array.from(positions);
   const mat=new THREE.MeshPhongMaterial({
-    color:0x1a6a8a,
+    color:0x3a7a8a,
     transparent:true,
-    opacity:.62,
+    opacity:.6,
     side:THREE.FrontSide,
     shininess:100,
     specular:0x88bbdd,
@@ -630,6 +632,20 @@ function buildWaterMesh(){
   waterMesh=new THREE.Mesh(geo,mat);
   waterMesh.userData.voxelWaterSurface=true;
   scene.add(waterMesh);
+}
+
+function updateWaterWaves(time){
+  if(!waterMesh)return;
+  const geo=waterMesh.geometry;
+  const base=geo.userData.basePositions;
+  if(!base)return;
+  const attr=geo.getAttribute('position');
+  const arr=attr.array;
+  for(let i=0;i<arr.length;i+=3){
+    const x=base[i],z=base[i+2];
+    arr[i+1]=base[i+1]+Math.sin(x*0.3+time*2)*BLOCK*.06+Math.sin(z*0.4+time*1.7)*BLOCK*.05;
+  }
+  attr.needsUpdate=true;
 }
 
 // ============================================================
@@ -893,7 +909,35 @@ const ambient=new THREE.AmbientLight(0x334455,0.4);
 scene.add(ambient);
 
 // Celestial bodies (Sun & Moon)
-let sunMesh=null, moonMesh=null, moon2Mesh=null;
+let sunMesh=null, moonMesh=null, moon2Mesh=null, sunGlow=null, starField=null;
+function makeGlowTexture(){
+  const c=document.createElement('canvas');c.width=c.height=128;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(64,64,0,64,64,64);
+  g.addColorStop(0,'rgba(255,245,200,.95)');
+  g.addColorStop(.25,'rgba(255,220,130,.55)');
+  g.addColorStop(.6,'rgba(255,180,80,.18)');
+  g.addColorStop(1,'rgba(255,160,60,0)');
+  x.fillStyle=g;x.fillRect(0,0,128,128);
+  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+}
+function buildStarField(){
+  const count=2000,positions=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    // Uniform points on a large sphere shell.
+    const u=hashNoise(i*1.7,i*2.3),v=hashNoise(i*3.1,i*0.7);
+    const theta=u*Math.PI*2,phi=Math.acos(2*v-1),r=300;
+    positions[i*3]=r*Math.sin(phi)*Math.cos(theta);
+    positions[i*3+1]=Math.abs(r*Math.cos(phi))*.9+20;
+    positions[i*3+2]=r*Math.sin(phi)*Math.sin(theta);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  const mat=new THREE.PointsMaterial({color:0xffffff,size:1.6,sizeAttenuation:false,transparent:true,opacity:0,depthWrite:false,fog:false});
+  starField=new THREE.Points(geo,mat);
+  starField.renderOrder=-11;
+  scene.add(starField);
+}
 function buildCelestialBodies(){
   // Sun
   const sunGeo=new THREE.SphereGeometry(15,32,32);
@@ -908,6 +952,13 @@ function buildCelestialBodies(){
   sunMesh=new THREE.Mesh(sunGeo,sunMat);
   sunMesh.renderOrder=-10;
   scene.add(sunMesh);
+  // Lens-flare style glow sprite parented to the sun.
+  const glowMatSprite=new THREE.SpriteMaterial({map:makeGlowTexture(),color:0xffffff,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,fog:false});
+  sunGlow=new THREE.Sprite(glowMatSprite);
+  sunGlow.scale.set(6,6,1);
+  sunGlow.renderOrder=-11;
+  sunMesh.add(sunGlow);
+  buildStarField();
   
   // Moon 1 - pale silver
   const moonGeo=new THREE.SphereGeometry(10,32,32);
@@ -966,6 +1017,16 @@ function updateCelestialBodies(){
   const moon2X=Math.cos(moon2Angle);
   moon2Mesh.position.set(moon2X*sunDist, moon2Y*sunDist+180, 0);
   moon2Mesh.visible=true;
+
+  // Stars fade in at night and sit centered on the player.
+  if(starField){
+    const dayFactor=Math.max(0,Math.min(1,sunY*2+0.3));
+    const nightFactor=1-dayFactor;
+    starField.material.opacity=THREE.MathUtils.clamp((nightFactor-0.3)/0.5,0,1);
+    starField.visible=starField.material.opacity>0.01;
+    starField.position.set(camera.position.x,0,camera.position.z);
+  }
+  if(sunGlow)sunGlow.material.opacity=THREE.MathUtils.clamp(sunY*1.2+.3,0,.9);
 }
 
 // Day/night state
@@ -2720,6 +2781,7 @@ function animate(){
     updateHands(dt);
     updatePlayerModel(dt,keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright'));
     updateDayNight(dt);
+    updateWaterWaves(clock.elapsedTime);
     updateAmbient(dt);
     updateWeather(dt);
     updateMusic(dt);
