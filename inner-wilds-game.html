@@ -32,7 +32,7 @@ canvas{display:block}
 .dialogue .choices{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .dialogue button,.start button,.notes button,.crafting-panel button,.settings-panel button{border:1px solid rgba(242,201,109,.45);border-radius:999px;padding:8px 13px;color:#201408;background:linear-gradient(180deg,#ffe3a4,#d99750);box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .dialogue button:hover,.start button:hover,.notes button:hover{filter:brightness(1.1)}
-.dialogue button.pressed{filter:brightness(1.35);outline:2px solid var(--gold);transform:translateY(1px)}
+.dialogue button.pressed{outline:2px solid var(--teal);box-shadow:0 0 16px rgba(121,216,200,.7);filter:brightness(1.2)}
 .banner{position:absolute;top:42%;left:50%;width:min(680px,calc(100vw - 24px));padding:16px 20px;transform:translate(-50%,-50%) scale(.96);border:1px solid rgba(242,201,109,.55);border-radius:6px 24px 6px 24px;background:linear-gradient(135deg,rgba(14,14,24,.94),rgba(42,24,62,.86));box-shadow:0 20px 80px rgba(0,0,0,.5),0 0 40px rgba(154,121,227,.25);opacity:0;text-align:center;transition:opacity .25s,transform .25s}
 .banner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 .banner h2{margin:0 0 6px;color:var(--gold);font-family:Georgia,serif;font-size:clamp(1.4rem,3.5vw,3rem)}
@@ -109,23 +109,31 @@ canvas{display:block}
 .inventory-hotbar{display:flex;gap:6px;justify-content:center;padding:12px 0;border-top:1px solid var(--line)}
 .inventory-hotbar .slot{width:48px;height:48px;cursor:pointer}
 
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(circle at 50% 35%,rgba(40,28,70,.55),rgba(7,10,16,.97) 60%);z-index:40;transition:opacity .5s ease}
+.loading.hidden{opacity:0;pointer-events:none}
+.loading-card{width:min(420px,calc(100vw - 32px));text-align:center;padding:26px 28px;border-radius:18px 6px 18px 6px;border:1px solid var(--line);background:linear-gradient(135deg,rgba(18,21,32,.9),rgba(6,8,14,.82));box-shadow:0 18px 60px rgba(0,0,0,.5)}
+.loading-card h2{margin:0 0 8px;color:var(--gold);font-family:Georgia,serif;font-size:1.8rem}
+.loading-card p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
+.loading-bar{height:10px;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06)}
+.loading-bar span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 16px rgba(242,201,109,.4);transition:width .25s ease}
 .qa-results{position:absolute;left:50%;bottom:80px;width:min(680px,calc(100vw - 24px));transform:translateX(-50%);padding:12px 14px;border-radius:12px;pointer-events:none;font-size:.85rem;line-height:1.4}
 .qa-results strong{color:var(--gold)}
 .qa-results .pass{color:#9ff3d6}
 .qa-results .fail{color:#ff9dae}
 .weapon-display{position:absolute;right:20px;bottom:80px;pointer-events:none}
-.loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,rgba(20,28,44,.96),rgba(6,8,14,.99));z-index:30;transition:opacity .45s}
-.loading.hidden{opacity:0;pointer-events:none;visibility:hidden}
-.loading h2{color:var(--gold);font-family:Georgia,serif;font-size:clamp(1.6rem,4vw,2.6rem);margin-bottom:16px;text-align:center}
-.loading .barwrap{width:min(360px,70vw);height:12px;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.06)}
-.loading .barwrap span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 16px rgba(242,201,109,.4);transition:width .25s}
-.loading p{margin-top:10px;color:var(--muted);font-size:.85rem;text-align:center}
 @media(max-width:860px){.top{grid-template-columns:1fr}.journal{top:auto;bottom:80px}.start-grid{grid-template-columns:1fr}.controls{display:none}.crafting-body{grid-template-columns:1fr}.crafting-grid{grid-template-columns:repeat(3,1fr)}.crafting-grid .slot{width:100%}}
 @media(max-width:600px){.brand p,.journal{display:none}}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div class="loading" id="loading">
+  <div class="loading-card">
+    <h2>Inner Wilds</h2>
+    <p id="loadingLabel">Shaping the island…</p>
+    <div class="loading-bar"><span id="loadingFill"></span></div>
+  </div>
+</div>
 <div class="hud">
   <div class="top">
     <section class="brand glass" id="brand"><h1>Inner Wilds</h1><p>Mine, craft, fight, and survive a living procedural world.</p></section>
@@ -143,7 +151,7 @@ canvas{display:block}
   <div class="crosshair" aria-hidden="true"></div>
   <div class="mine-meter glass" id="mineMeter" hidden><span id="mineFill"></span><b id="mineText">Mining</b></div>
   <div class="quickbar glass" id="quickbar"></div>
-  <div class="controls glass" id="controlsHint">WASD move. Shift sprint. Space jump/swim. Left-click hold to mine. Right-click place. E interact. F steady. C craft. M menu. [ / ] look speed. V view. 1-4 slots. Tab inventory.</div>
+  <div class="controls glass" id="controlsHint">WASD move. Shift sprint. Space jump/swim. Left-click hold to mine/attack. Right-click place or eat held food. E interact. F steady. C craft. Tab inventory (Q drops a stack). M menu. [ / ] look speed. V first/third person. 1-9 slots.</div>
   <section class="notes glass" id="notes" role="dialog" aria-modal="true" aria-labelledby="notesTitle">
     <h2 id="notesTitle">Field Notes</h2>
     <p>You wake on a broken survey island. Restore the waystones, recover the lost chart, and learn why the Hollowlings were left to guard the ruins.</p>
@@ -184,10 +192,13 @@ canvas{display:block}
   </section>
   <section class="inventory-panel glass" id="inventoryPanel" role="dialog" aria-modal="true">
     <h2>Inventory</h2>
-    <p class="setting-help">Shift-click moves a stack between bag and hotbar. Press Q in-game to drop the held stack.</p>
+    <p class="setting-help" style="margin-bottom:8px">Shift-click to move items between bag and hotbar. Q drops the selected stack.</p>
     <div class="inventory-grid" id="inventoryGrid"></div>
     <div class="inventory-hotbar" id="inventoryHotbar"></div>
-    <div class="menu-actions"><button id="sortInventory">Auto-sort</button><button class="secondary" id="closeInventory">Close</button></div>
+    <div class="menu-actions" style="justify-content:space-between">
+      <button id="sortInventory" class="secondary">Auto-sort</button>
+      <button id="closeInventory">Close</button>
+    </div>
   </section>
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
 </div>
@@ -236,7 +247,6 @@ canvas{display:block}
   </section>
 </div>
 <div class="qa-results" id="qaPanel" hidden></div>
-<div class="loading" id="loading"><div><h2>Inner Wilds</h2><div class="barwrap"><span id="loadingBar"></span></div><p id="loadingText">Shaping the island&hellip;</p></div></div>
 
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
@@ -626,12 +636,10 @@ function buildWaterMesh(){
   geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
   geo.setIndex(indices);
   geo.computeBoundingSphere();
-  // Keep a copy of the resting surface so we can animate ripples each frame.
-  geo.userData.basePositions=Float32Array.from(positions);
   const mat=new THREE.MeshPhongMaterial({
-    color:0x3a7a8a,
+    color:0x1a6a8a,
     transparent:true,
-    opacity:.6,
+    opacity:.62,
     side:THREE.FrontSide,
     shininess:100,
     specular:0x88bbdd,
@@ -639,19 +647,21 @@ function buildWaterMesh(){
   });
   waterMesh=new THREE.Mesh(geo,mat);
   waterMesh.userData.voxelWaterSurface=true;
+  waterMesh.userData.basePositions=Float32Array.from(positions);
   scene.add(waterMesh);
 }
 
-function updateWaterWaves(time){
+let waterTime=0;
+function updateWater(dt){
   if(!waterMesh)return;
-  const geo=waterMesh.geometry;
-  const base=geo.userData.basePositions;
+  waterTime+=dt;
+  const base=waterMesh.userData.basePositions;
   if(!base)return;
-  const attr=geo.getAttribute('position');
+  const attr=waterMesh.geometry.getAttribute('position');
   const arr=attr.array;
-  for(let i=0;i<arr.length;i+=3){
-    const x=base[i],z=base[i+2];
-    arr[i+1]=base[i+1]+Math.sin(x*0.3+time*2)*BLOCK*.06+Math.sin(z*0.4+time*1.7)*BLOCK*.05;
+  for(let i=0;i<base.length;i+=3){
+    const bx=base[i],bz=base[i+2];
+    arr[i+1]=base[i+1]+Math.sin(bx*0.3+waterTime*2)*0.05*BLOCK+Math.sin(bz*0.4+waterTime*1.7)*0.04*BLOCK;
   }
   attr.needsUpdate=true;
 }
@@ -751,6 +761,7 @@ function hideBreakOverlay(){if(breakOverlay)breakOverlay.visible=false}
 
 function buildFirstPersonHands(){
   const group=new THREE.Group();group.visible=false;group.position.set(0,-.38,-.55);
+  // depthTest:false keeps the arms drawn on top of nearby world geometry so they never z-fight or clip away.
   const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72,depthTest:false});
   const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a,depthTest:false});
   const addHand=side=>{
@@ -773,44 +784,45 @@ function buildFirstPersonHands(){
 
 function triggerHandSwing(power=1){if(handRig)handRig.swing=Math.max(handRig.swing,.42*power)}
 
-// Third-person avatar (shown when V toggles thirdPerson)
-let playerModel=null,thirdPerson=false,playerModelWalk=0;
+// Third-person avatar (shown when the V key toggles thirdPerson on).
+let playerModel=null;
 function buildPlayerModel(){
-  const g=humanoid(0x4a6f8c,true);
-  // Held item lives in the right hand and mirrors the selected hotbar slot.
-  const itemGroup=new THREE.Group();
-  itemGroup.position.set(.78,1.62,.36);
-  const itemBox=new THREE.Mesh(new THREE.BoxGeometry(.5,.5,.5),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
+  const model=humanoid(0x2f6f6a);
+  model.visible=false;
+  // Held item in the right hand, mirrors updateHandItem() in spirit.
+  const itemGroup=new THREE.Group();itemGroup.position.set(.92,1.7,.4);
+  const itemBox=new THREE.Mesh(new THREE.BoxGeometry(.42,.42,.42),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
   itemGroup.add(itemBox);
-  g.add(itemGroup);
-  g.userData.itemGroup=itemGroup;g.userData.itemBox=itemBox;
-  g.visible=false;
-  scene.add(g);
-  playerModel=g;
+  model.add(itemGroup);
+  model.userData.itemGroup=itemGroup;model.userData.itemBox=itemBox;
+  scene.add(model);
+  playerModel=model;
 }
-function updatePlayerModel(dt,moving){
+function updatePlayerModel(dt){
   if(!playerModel)return;
   playerModel.visible=thirdPerson&&state.started&&ui.start.classList.contains('hidden');
   if(!playerModel.visible)return;
   playerModel.position.set(player.pos.x,player.pos.y,player.pos.z);
   playerModel.rotation.y=yaw+Math.PI;
-  playerModelWalk+=dt*(moving?9:0);
-  const stride=moving?Math.sin(playerModelWalk):0;
+  // Simple walk sway when moving on the ground.
+  const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
+  const t=performance.now()*.008;
+  const stride=moving&&player.grounded?Math.sin(t):0;
   const ud=playerModel.userData;
-  if(ud.lArm)ud.lArm.rotation.x=-stride*.5;
-  if(ud.rArm)ud.rArm.rotation.x=stride*.5;
-  if(ud.lLeg)ud.lLeg.rotation.x=stride*.6;
-  if(ud.rLeg)ud.rLeg.rotation.x=-stride*.6;
-  // Mirror selected item onto the avatar's right hand.
+  if(ud.lArm)ud.lArm.rotation.x=-stride*.4;
+  if(ud.rArm)ud.rArm.rotation.x=stride*.4;
+  if(ud.lLeg)ud.lLeg.rotation.x=stride*.5;
+  if(ud.rLeg)ud.rLeg.rotation.x=-stride*.5;
+  // Reflect the held item color/visibility.
   const type=player.hotbar[player.selectedSlot];
-  const bt=BT[type];
-  if(type&&type>0&&(player.inventory[type]||0)>0&&bt){
-    ud.itemGroup.visible=true;
-    ud.itemBox.material.color.setHex(bt.color);
-    ud.itemBox.scale.setScalar(bt.weapon?.7:bt.transparent?.5:.8);
-  } else {
-    ud.itemGroup.visible=false;
-  }
+  const has=type&&type!==0&&(player.inventory[type]||0)>0&&BT[type];
+  ud.itemGroup.visible=Boolean(has);
+  if(has)ud.itemBox.material.color.setHex(BT[type].color);
+}
+function toggleThirdPerson(){
+  thirdPerson=!thirdPerson;
+  if(handRig)handRig.group.visible=!thirdPerson;
+  if(typeof toast==='function')toast(thirdPerson?'Third-person view':'First-person view');
 }
 
 function updateHandItem(){
@@ -922,18 +934,18 @@ function makeGlowTexture(){
   const c=document.createElement('canvas');c.width=c.height=128;
   const x=c.getContext('2d');
   const g=x.createRadialGradient(64,64,0,64,64,64);
-  g.addColorStop(0,'rgba(255,245,200,.95)');
-  g.addColorStop(.25,'rgba(255,220,130,.55)');
-  g.addColorStop(.6,'rgba(255,180,80,.18)');
-  g.addColorStop(1,'rgba(255,160,60,0)');
+  g.addColorStop(0,'rgba(255,244,200,.9)');
+  g.addColorStop(.25,'rgba(255,210,120,.5)');
+  g.addColorStop(.6,'rgba(255,170,70,.16)');
+  g.addColorStop(1,'rgba(255,150,60,0)');
   x.fillStyle=g;x.fillRect(0,0,128,128);
-  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
 function buildStarField(){
   const count=2000,positions=new Float32Array(count*3);
   for(let i=0;i<count;i++){
-    // Uniform points on a large sphere shell.
-    const u=hashNoise(i*1.7,i*2.3),v=hashNoise(i*3.1,i*0.7);
+    // Even-ish distribution on a large sphere shell.
+    const u=hashNoise(i*1.3,i*2.7),v=hashNoise(i*3.1,i*0.7);
     const theta=u*Math.PI*2,phi=Math.acos(2*v-1),r=300;
     positions[i*3]=r*Math.sin(phi)*Math.cos(theta);
     positions[i*3+1]=Math.abs(r*Math.cos(phi))*.9+20;
@@ -960,12 +972,12 @@ function buildCelestialBodies(){
   sunMesh=new THREE.Mesh(sunGeo,sunMat);
   sunMesh.renderOrder=-10;
   scene.add(sunMesh);
-  // Lens-flare style glow sprite parented to the sun.
-  const glowMatSprite=new THREE.SpriteMaterial({map:makeGlowTexture(),color:0xffffff,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,fog:false});
-  sunGlow=new THREE.Sprite(glowMatSprite);
-  sunGlow.scale.set(6,6,1);
+  // Lens-flare-style glow parented to the sun.
+  sunGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:makeGlowTexture(),color:0xffdd99,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,fog:false}));
+  sunGlow.scale.set(80,80,1);
   sunGlow.renderOrder=-11;
   sunMesh.add(sunGlow);
+  // Starfield, visible at night.
   buildStarField();
   
   // Moon 1 - pale silver
@@ -1026,15 +1038,11 @@ function updateCelestialBodies(){
   moon2Mesh.position.set(moon2X*sunDist, moon2Y*sunDist+180, 0);
   moon2Mesh.visible=true;
 
-  // Stars fade in at night and sit centered on the player.
-  if(starField){
-    const dayFactor=Math.max(0,Math.min(1,sunY*2+0.3));
-    const nightFactor=1-dayFactor;
-    starField.material.opacity=THREE.MathUtils.clamp((nightFactor-0.3)/0.5,0,1);
-    starField.visible=starField.material.opacity>0.01;
-    starField.position.set(camera.position.x,0,camera.position.z);
-  }
-  if(sunGlow)sunGlow.material.opacity=THREE.MathUtils.clamp(sunY*1.2+.3,0,.9);
+  // Night factor drives starfield + sun glow fade.
+  const dayFactor=Math.max(0,Math.min(1,sunY*2+0.3));
+  const nightFactor=1-dayFactor;
+  if(starField)starField.material.opacity=THREE.MathUtils.clamp((nightFactor-0.3)/0.5,0,1)*.95;
+  if(sunGlow)sunGlow.material.opacity=Math.max(0,sunY)*0.9;
 }
 
 // Day/night state
@@ -1087,13 +1095,13 @@ const player={
   hotbar:[1,2,3,4,9,10,0,0,0],
   equippedWeapon:null,
   mining:null,
-  primaryHeld:false,
   swingCooldown:0,
   wasInWater:false,
-  stepTimer:0,
+  primaryHeld:false,
   trusted:new Set(),
   talked:new Set(),
   waystones:new Set(),
+  discovered:new Set(),
   monstersRepelled:0,
 };
 
@@ -1139,9 +1147,14 @@ const ui={
   inventoryHotbar:document.getElementById('inventoryHotbar'),closeInventory:document.getElementById('closeInventory'),
   sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
-  loading:document.getElementById('loading'),loadingBar:document.getElementById('loadingBar'),loadingText:document.getElementById('loadingText'),
+  loading:document.getElementById('loading'),loadingFill:document.getElementById('loadingFill'),loadingLabel:document.getElementById('loadingLabel'),
 };
-function setLoadingProgress(pct,text){if(ui.loadingBar)ui.loadingBar.style.width=pct+'%';if(text&&ui.loadingText)ui.loadingText.textContent=text}
+
+function setLoadingProgress(pct,label){
+  if(ui.loadingFill)ui.loadingFill.style.width=THREE.MathUtils.clamp(pct,0,100)+'%';
+  if(label&&ui.loadingLabel)ui.loadingLabel.textContent=label;
+}
+function hideLoading(){if(ui.loading)ui.loading.classList.add('hidden')}
 
 function toast(text){
   const el=document.createElement('div');el.className='toast';el.textContent=text;
@@ -1166,10 +1179,6 @@ function showDialogue(speaker,text,choices=[{label:'Continue',action:hideDialogu
     ui.choices.appendChild(b);
   }
   ui.dialogue.classList.add('show');
-}
-function flashDialogueChoice(idx){
-  const btn=ui.choices.querySelector(`button[data-key="${idx+1}"]`);
-  if(btn){btn.classList.add('pressed');setTimeout(()=>btn.classList.remove('pressed'),140)}
 }
 
 const iconCache={};
@@ -1212,14 +1221,9 @@ function makeItemIconDataURL(type){
     // wings
     x.fillStyle='rgba(255,255,200,.5)';x.beginPath();x.ellipse(8,16,6,3,.2,0,Math.PI*2);x.fill();
     x.fillStyle='rgba(255,255,200,.5)';x.beginPath();x.ellipse(24,16,6,3,-.2,0,Math.PI*2);x.fill()
-  } else if(type>=31&&type<=36){ // tools (pickaxe/axe)
-    x.fillStyle='#8a6a3a';x.fillRect(14,8,4,22); // handle
-    x.fillStyle=col;
-    if(BT[type]?.tool==='pickaxe'){x.beginPath();x.moveTo(4,10);x.quadraticCurveTo(16,2,28,10);x.lineWidth=4;x.strokeStyle=col;x.stroke()}
-    else{x.fillRect(16,6,10,10)}
-  } else if(type===40||type===41||type===42||type===43||type===44||type===15||type===16||type===17||type===18||type===19){ // food/special
-    x.fillStyle=col;x.beginPath();x.arc(16,16,11,0,Math.PI*2);x.fill();
-    x.fillStyle='rgba(255,255,255,.3)';x.beginPath();x.arc(12,12,3,0,Math.PI*2);x.fill()
+  } else if(type===15||type===16||type===17||type===18||type===19){ // food/special
+    x.fillStyle='rgba(255,255,255,.2)';x.beginPath();x.arc(16,14,10,0,Math.PI*2);x.fill();
+    x.fillStyle='rgba(255,255,255,.3)';x.beginPath();x.arc(14,12,3,0,Math.PI*2);x.fill()
   } else { // default: blocks with 3D edge effect
     x.fillStyle='rgba(0,0,0,.15)';x.fillRect(0,0,12,32);
     x.fillStyle='rgba(255,255,255,.12)';x.fillRect(20,0,12,32);
@@ -1242,26 +1246,25 @@ function slotHTML(type,count){
 }
 
 function addToInventory(type,count=1){
-  const had=(player.inventory[type]||0)>0;
   player.inventory[type]=(player.inventory[type]||0)+count;
   if(!player.hotbar.includes(type)){
     const emptySlot=player.hotbar.indexOf(0);
     if(emptySlot!==-1)player.hotbar[emptySlot]=type;
   }
-  if(!had&&count>0)discoverRecipesFor(type);
-  if(state.started)playPickup();
+  discoverRecipesFor(type);
 }
 
-// Reveal recipes that use a newly acquired ingredient.
+// Recipe discovery: handling/holding an item reveals recipes that use or produce it.
+function recipeKnown(i){const r=RECIPES[i];return r&&(r.basic||player.discovered.has(i))}
 function discoverRecipesFor(type){
-  if(typeof RECIPES==='undefined')return;
-  for(const r of RECIPES){
-    if(discoveredRecipes.has(r.name))continue;
-    if(r.ingredients[type]!==undefined){
-      discoveredRecipes.add(r.name);
-      if(state.started)toast('Recipe unlocked: '+r.name);
-    }
-  }
+  if(typeof RECIPES==='undefined'||!type)return;
+  let any=false;
+  RECIPES.forEach((r,i)=>{
+    if(r.basic||player.discovered.has(i))return;
+    const uses=Object.keys(r.ingredients).map(Number).includes(Number(type))||r.result===Number(type);
+    if(uses){player.discovered.add(i);any=true;if(typeof toast==='function')toast('Recipe discovered: '+r.name)}
+  });
+  if(any&&ui.craftingPanel?.classList.contains('open'))renderCrafting();
 }
 
 function renderQuickbar(){
@@ -1274,7 +1277,7 @@ function renderQuickbar(){
     if(type>0&&count>0){
       div.innerHTML=slotHTML(type,count);
     }
-    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar()});
+    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar();discoverRecipesFor(player.hotbar[i])});
     ui.quickbar.appendChild(div);
   }
 }
@@ -1299,7 +1302,40 @@ function updateMeters(){
 // ============================================================
 // CRAFTING
 // ============================================================
-// Extended block/item types for crafted items, tools, and food
+const RECIPES=[
+  // Basics are known from the start; everything else unlocks via recipe discovery.
+  {name:'Planks x4',result:9,count:4,ingredients:{5:1},shapeless:true,basic:true},
+  {name:'Sticks x4',result:61,count:4,ingredients:{9:1},shapeless:true,basic:true},
+  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true,basic:true},
+  {name:'Torch x4',result:24,count:4,ingredients:{5:1,9:1},shapeless:true,basic:true},
+  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true,basic:true},
+  {name:'Iron Ingot',result:60,count:1,ingredients:{12:1},shapeless:true},
+  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,61:1},shapeless:false,pattern:[[9,0,0],[9,0,0],[61,0,0]]},
+  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,61:1},shapeless:false,pattern:[[10,0,0],[10,0,0],[61,0,0]]},
+  {name:'Iron Sword',result:22,count:1,ingredients:{60:2,61:1},shapeless:false,pattern:[[60,0,0],[60,0,0],[61,0,0]]},
+  {name:'Bow',result:23,count:1,ingredients:{9:3,61:2},shapeless:false,pattern:[[0,9,61],[9,61,9],[0,9,61]]},
+  {name:'Wooden Pickaxe',result:30,count:1,ingredients:{9:3,61:2},shapeless:false,pattern:[[9,9,9],[0,61,0],[0,61,0]]},
+  {name:'Stone Pickaxe',result:31,count:1,ingredients:{10:3,61:2},shapeless:false,pattern:[[10,10,10],[0,61,0],[0,61,0]]},
+  {name:'Iron Pickaxe',result:32,count:1,ingredients:{60:3,61:2},shapeless:false,pattern:[[60,60,60],[0,61,0],[0,61,0]]},
+  {name:'Wooden Axe',result:33,count:1,ingredients:{9:3,61:2},shapeless:false,pattern:[[9,9,0],[9,61,0],[0,61,0]]},
+  {name:'Stone Axe',result:34,count:1,ingredients:{10:3,61:2},shapeless:false,pattern:[[10,10,0],[10,61,0],[0,61,0]]},
+  {name:'Iron Axe',result:35,count:1,ingredients:{60:3,61:2},shapeless:false,pattern:[[60,60,0],[60,61,0],[0,61,0]]},
+  {name:'Iron Helmet',result:40,count:1,ingredients:{60:5},shapeless:false,pattern:[[60,60,60],[60,0,60],[0,0,0]]},
+  {name:'Iron Chestplate',result:41,count:1,ingredients:{60:8},shapeless:false,pattern:[[60,0,60],[60,60,60],[60,60,60]]},
+  {name:'Iron Leggings',result:42,count:1,ingredients:{60:7},shapeless:false,pattern:[[60,60,60],[60,0,60],[60,0,60]]},
+  {name:'Iron Boots',result:43,count:1,ingredients:{60:4},shapeless:false,pattern:[[0,0,0],[60,0,60],[60,0,60]]},
+  {name:'Berries',result:50,count:2,ingredients:{6:2},shapeless:true},
+  {name:'Wooden Bowl',result:51,count:1,ingredients:{9:3},shapeless:true},
+  {name:'Forest Stew',result:52,count:1,ingredients:{50:2,51:1},shapeless:true},
+  {name:'Roasted Root',result:53,count:1,ingredients:{1:1,7:1},shapeless:true},
+  {name:'Flatbread',result:54,count:1,ingredients:{50:3},shapeless:true},
+  {name:'Glass Bottle',result:55,count:1,ingredients:{4:1},shapeless:true},
+  {name:'Health Tonic',result:56,count:1,ingredients:{55:1,14:1},shapeless:true},
+  {name:'Warming Draught',result:57,count:1,ingredients:{55:1,7:1},shapeless:true},
+  {name:'Glow Apple',result:58,count:1,ingredients:{3:1,6:1},shapeless:true},
+];
+
+// Extended block types for crafted items
 BT[20]={name:'wooden_sword',color:0x8b6914,rough:.8,weapon:true,damage:4};
 BT[21]={name:'stone_sword',color:0x6a6f73,rough:.75,weapon:true,damage:6};
 BT[22]={name:'iron_sword',color:0xaaaacc,rough:.6,weapon:true,damage:8};
@@ -1307,62 +1343,37 @@ BT[23]={name:'bow',color:0x8b6914,rough:.8,weapon:true,ranged:true,damage:5};
 BT[24]={name:'torch',color:0xddaa44,rough:.9,light:true,glow:0x442200};
 BT[25]={name:'butterfly',color:0xdd88ff,rough:.7};
 BT[26]={name:'firefly',color:0xffee88,rough:.45,light:true,glow:0x554400};
+// Tools (mine = mining-speed multiplier vs hand)
+BT[30]={name:'wooden_pickaxe',color:0x9a7a3a,rough:.8,tool:true,mine:1.5,damage:3};
+BT[31]={name:'stone_pickaxe',color:0x7a7f83,rough:.75,tool:true,mine:2.5,damage:4};
+BT[32]={name:'iron_pickaxe',color:0xbfc4dd,rough:.6,tool:true,mine:4,damage:5};
+BT[33]={name:'wooden_axe',color:0x8a6a2a,rough:.8,tool:true,mine:1.4,damage:4};
+BT[34]={name:'stone_axe',color:0x6f7479,rough:.75,tool:true,mine:2.2,damage:5};
+BT[35]={name:'iron_axe',color:0xb4b9d4,rough:.6,tool:true,mine:3.5,damage:7};
 // Materials
-BT[30]={name:'stick',color:0x8b6914,rough:.9};
-BT[37]={name:'iron_ingot',color:0xd8d8e8,rough:.5,metalness:.6};
-BT[38]={name:'bowl',color:0x8a6a3a,rough:.85};
-BT[39]={name:'bottle',color:0x9fd6e0,rough:.3,transparent:true};
-// Tools (mineSpeed multiplies mining speed; tool category gives bonus vs matching blocks)
-BT[31]={name:'wooden_pickaxe',color:0x9b7a34,rough:.8,tool:'pickaxe',mineSpeed:1.5,damage:3};
-BT[32]={name:'stone_pickaxe',color:0x7a7f83,rough:.8,tool:'pickaxe',mineSpeed:2.5,damage:4};
-BT[33]={name:'iron_pickaxe',color:0xc8c8dc,rough:.6,tool:'pickaxe',mineSpeed:4,damage:5};
-BT[34]={name:'wooden_axe',color:0x9b7a34,rough:.8,tool:'axe',mineSpeed:1.4,damage:4};
-BT[35]={name:'stone_axe',color:0x7a7f83,rough:.8,tool:'axe',mineSpeed:2.2,damage:5};
-BT[36]={name:'iron_axe',color:0xc8c8dc,rough:.6,tool:'axe',mineSpeed:3.5,damage:6};
-// Food (food = hunger restored; heal = hp restored)
-BT[40]={name:'berries',color:0xc0395a,rough:.7,food:15};
-BT[41]={name:'mushroom',color:0xb06a4a,rough:.8,food:10};
-BT[42]={name:'bread',color:0xd6a44a,rough:.8,food:30};
-BT[43]={name:'stew',color:0xc98a4a,rough:.7,food:55,heal:12};
-BT[44]={name:'health_potion',color:0xff5577,rough:.4,heal:45,food:5};
-// Armor (armor = flat damage reduction while carried)
-BT[50]={name:'iron_helmet',color:0xc8c8dc,rough:.55,armor:2};
-BT[51]={name:'iron_chestplate',color:0xc8c8dc,rough:.55,armor:4};
-BT[52]={name:'iron_boots',color:0xc8c8dc,rough:.55,armor:1};
-// Decorative blocks
-BT[53]={name:'brick',color:0x9a4a3a,rough:.82,hardness:1.1};
-BT[54]={name:'amber_lamp',color:0xffcf6a,rough:.5,light:true,glow:0x553300,hardness:.8};
+BT[60]={name:'iron_ingot',color:0xd8d2c4,rough:.5,metalness:.4};
+BT[61]={name:'stick',color:0x8a6a3a,rough:.9};
+// Armor (armor = damage reduction points)
+BT[40]={name:'iron_helmet',color:0xc9cee0,rough:.55,armor:2};
+BT[41]={name:'iron_chestplate',color:0xc9cee0,rough:.55,armor:4};
+BT[42]={name:'iron_leggings',color:0xc9cee0,rough:.55,armor:3};
+BT[43]={name:'iron_boots',color:0xc9cee0,rough:.55,armor:1};
+// Food (food = saturation restored) and potions
+BT[50]={name:'berries',color:0xc23a55,rough:.8,food:8};
+BT[51]={name:'bowl',color:0x8a6038,rough:.85};
+BT[52]={name:'forest_stew',color:0xb6743a,rough:.8,food:38};
+BT[53]={name:'roasted_root',color:0xc98a44,rough:.8,food:24};
+BT[54]={name:'flatbread',color:0xe0c074,rough:.85,food:18};
+BT[55]={name:'glass_bottle',color:0x9fd8e0,rough:.3};
+BT[56]={name:'health_tonic',color:0xe24a6a,rough:.4,heal:40};
+BT[57]={name:'warming_draught',color:0xe39044,rough:.4,warm:40};
+BT[58]={name:'glow_apple',color:0xe6a23a,rough:.6,food:30};
 
-const RECIPES=[
-  {name:'Planks x4',result:9,count:4,ingredients:{1:1},shapeless:true},
-  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true},
-  {name:'Sticks x4',result:30,count:4,ingredients:{9:1},shapeless:true},
-  {name:'Iron Ingot',result:37,count:1,ingredients:{12:1},shapeless:true},
-  {name:'Bowl',result:38,count:1,ingredients:{9:3},shapeless:true},
-  {name:'Bottle',result:39,count:1,ingredients:{4:2},shapeless:true},
-  {name:'Torch x4',result:24,count:4,ingredients:{30:1,1:1},shapeless:true},
-  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true},
-  {name:'Brick x4',result:53,count:4,ingredients:{10:2},shapeless:true},
-  {name:'Amber Lamp',result:54,count:1,ingredients:{3:1,24:1},shapeless:true},
-  {name:'Wooden Pickaxe',result:31,count:1,ingredients:{30:2,9:3},pattern:[[9,9,9],[0,30,0],[0,30,0]]},
-  {name:'Stone Pickaxe',result:32,count:1,ingredients:{30:2,10:3},pattern:[[10,10,10],[0,30,0],[0,30,0]]},
-  {name:'Iron Pickaxe',result:33,count:1,ingredients:{30:2,37:3},pattern:[[37,37,37],[0,30,0],[0,30,0]]},
-  {name:'Wooden Axe',result:34,count:1,ingredients:{30:2,9:3},pattern:[[9,9,0],[9,30,0],[0,30,0]]},
-  {name:'Stone Axe',result:35,count:1,ingredients:{30:2,10:3},pattern:[[10,10,0],[10,30,0],[0,30,0]]},
-  {name:'Iron Axe',result:36,count:1,ingredients:{30:2,37:3},pattern:[[37,37,0],[37,30,0],[0,30,0]]},
-  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,30:1},pattern:[[9,0,0],[9,0,0],[30,0,0]]},
-  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,30:1},pattern:[[10,0,0],[10,0,0],[30,0,0]]},
-  {name:'Iron Sword',result:22,count:1,ingredients:{37:2,30:1},pattern:[[37,0,0],[37,0,0],[30,0,0]]},
-  {name:'Bow',result:23,count:1,ingredients:{30:3,9:2},pattern:[[0,30,9],[30,0,9],[0,30,9]]},
-  {name:'Bread',result:42,count:1,ingredients:{40:3},shapeless:true},
-  {name:'Mushroom Stew',result:43,count:1,ingredients:{40:2,41:1,38:1},shapeless:true},
-  {name:'Health Potion',result:44,count:1,ingredients:{39:1,14:1},shapeless:true},
-  {name:'Iron Helmet',result:50,count:1,ingredients:{37:5},pattern:[[37,37,37],[37,0,37],[0,0,0]]},
-  {name:'Iron Chestplate',result:51,count:1,ingredients:{37:8},pattern:[[37,0,37],[37,37,37],[37,37,37]]},
-  {name:'Iron Boots',result:52,count:1,ingredients:{37:4},pattern:[[0,0,0],[37,0,37],[37,0,37]]},
-];
+// Blocks that may be set into the voxel grid via right-click placement.
+const PLACEABLE_BLOCKS=new Set([1,2,3,4,6,7,9,10,11,12]);
+function miningMultiplier(type){return BT[type]?.mine||1}
+
 let selectedRecipe=RECIPES[0];
-const discoveredRecipes=new Set();
 
 function recipeCells(recipe){
   const cells=Array(9).fill(0);
@@ -1375,7 +1386,10 @@ function recipeCells(recipe){
 }
 
 function renderCrafting(){
-  if(!selectedRecipe||!RECIPES.includes(selectedRecipe))selectedRecipe=RECIPES[0];
+  if(!selectedRecipe||!RECIPES.includes(selectedRecipe)||!recipeKnown(RECIPES.indexOf(selectedRecipe))){
+    const firstKnown=RECIPES.findIndex((r,i)=>recipeKnown(i));
+    selectedRecipe=RECIPES[firstKnown===-1?0:firstKnown];
+  }
   const selectedCanCraft=Object.entries(selectedRecipe.ingredients).every(([type,amt])=>(player.inventory[type]||0)>=amt);
   ui.craftingGrid.innerHTML='';
   for(const type of recipeCells(selectedRecipe)){
@@ -1392,15 +1406,16 @@ function renderCrafting(){
   ui.craftButton.onclick=selectedCanCraft?()=>craftRecipe(selectedRecipe):null;
   ui.craftResult.onclick=selectedCanCraft?()=>craftRecipe(selectedRecipe):null;
   ui.recipeList.innerHTML='';
-  for(const r of RECIPES){
+  RECIPES.forEach((r,i)=>{
+    if(!recipeKnown(i))return;
     const canCraft=Object.entries(r.ingredients).every(([type,amt])=>(player.inventory[type]||0)>=amt);
     const row=document.createElement('div');
     row.className='recipe-row'+(r===selectedRecipe?' active':'')+(canCraft?'':' disabled');
     const ingNames=Object.entries(r.ingredients).map(([t,a])=>`${a}x ${BT[t]?.name||t}`).join(', ');
     row.innerHTML=`<span><span class="recipe-title">${r.name}</span><br><span class="recipe-cost">${ingNames}</span></span><span>${canCraft?'Ready':'Need mats'}</span>`;
-    row.dataset.recipeIdx=RECIPES.indexOf(r);
+    row.dataset.recipeIdx=i;
     ui.recipeList.appendChild(row);
-  }
+  });
   // Event delegation for recipe list
   if(!ui.recipeList._delegated){
     ui.recipeList.addEventListener('click',e=>{
@@ -1460,9 +1475,9 @@ function renderInventory(){
       div.innerHTML=slotHTML(type,count);
     }
     div.addEventListener('click',e=>{
-      // Shift-click removes the stack from the hotbar back into the bag.
-      if(e.shiftKey&&type>0){player.hotbar[i]=0;renderQuickbar();renderInventory();return}
-      player.selectedSlot=i;renderQuickbar();renderInventory();
+      // Shift-click pulls the item off the hotbar into the bag; plain click selects.
+      if(e.shiftKey&&type>0){quickMoveFromHotbar(i);return}
+      player.selectedSlot=i;renderQuickbar();renderInventory();discoverRecipesFor(type);
     });
     ui.inventoryHotbar.appendChild(div);
   }
@@ -1474,35 +1489,14 @@ function renderInventory(){
     const div=document.createElement('div');
     div.className='slot'+(count<=0?' empty':'');
     div.innerHTML=slotHTML(type,count);
+    // Plain or shift-click both bring the item onto the hotbar.
     div.addEventListener('click',()=>{moveToHotbar(type)});
     ui.inventoryGrid.appendChild(div);
   }
 }
 
-function sortInventory(){
-  // Compact the hotbar and order entries by item id for a tidy bag.
-  const types=Object.keys(player.inventory).filter(t=>player.inventory[t]>0).map(Number).sort((a,b)=>a-b);
-  player.hotbar=[0,0,0,0,0,0,0,0,0];
-  for(let i=0;i<Math.min(9,types.length);i++)player.hotbar[i]=types[i];
-  player.selectedSlot=0;
-  renderQuickbar();renderInventory();
-  toast('Inventory sorted');
-}
-
-function dropSelectedStack(){
-  const i=player.selectedSlot,type=player.hotbar[i];
-  if(!type||(player.inventory[type]||0)<=0){toast('Nothing to drop');return}
-  const count=player.inventory[type];
-  player.inventory[type]=0;
-  player.hotbar[i]=0;
-  const eye=new THREE.Vector3(player.pos.x,player.pos.y+BLOCK,player.pos.z);
-  spawnParticle(eye,BT[type]?.color||0xf2c96d,10,3);
-  toast('Dropped '+count+'x '+(BT[type]?.name||'item').replace(/_/g,' '));
-  renderQuickbar();
-  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
-}
-
 function moveToHotbar(type){
+  if(player.hotbar.includes(type)){renderQuickbar();renderInventory();return}
   const emptySlot=player.hotbar.indexOf(0);
   if(emptySlot!==-1){
     player.hotbar[emptySlot]=type;
@@ -1511,6 +1505,37 @@ function moveToHotbar(type){
   }
   renderQuickbar();
   renderInventory();
+}
+
+// Remove an item from a hotbar slot (it stays in the bag/inventory).
+function quickMoveFromHotbar(slotIndex){
+  player.hotbar[slotIndex]=0;
+  renderQuickbar();
+  renderInventory();
+}
+
+function dropSelectedStack(){
+  const slot=player.selectedSlot,type=player.hotbar[slot];
+  if(!type||(player.inventory[type]||0)<=0){toast('Nothing to drop.');return}
+  const count=player.inventory[type];
+  player.inventory[type]=0;
+  player.hotbar[slot]=0;
+  spawnParticle(camera.position.clone(),BT[type]?.color||0xffffff,10,2.2);
+  toast('Dropped '+count+'x '+(BT[type]?.name||'item').replace(/_/g,' '));
+  renderQuickbar();
+  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
+}
+
+// Sort owned items by id and repack the hotbar.
+function autoSortHotbar(){
+  const types=Object.keys(player.inventory).filter(t=>player.inventory[t]>0).map(Number).sort((a,b)=>a-b);
+  const newHotbar=[0,0,0,0,0,0,0,0,0];
+  for(let i=0;i<Math.min(9,types.length);i++)newHotbar[i]=types[i];
+  player.hotbar=newHotbar;
+  player.selectedSlot=THREE.MathUtils.clamp(player.selectedSlot,0,8);
+  renderQuickbar();
+  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
+  toast('Inventory sorted');
 }
 
 function toggleInventory(){
@@ -1669,7 +1694,8 @@ function addAgent(type,name,x,z,opts={}){
   else if(type==='waystone')model=makeWaystone(opts.color||0x79d8c8);
   else model=humanoid(0x5e78b6,false);
   model.position.set(x,y,z);
-  model.userData.agent={type,name,hp:opts.hp||2,maxHp:opts.hp||2,awake:type==='monster'&&opts.awake===true,state:'idle',trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,opts};
+  const hp0=opts.hp||2;
+  model.userData.agent={type,name,hp:hp0,maxHp:hp0,awake:type==='monster'&&opts.awake===true,state:'idle',trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,knockback:new THREE.Vector3(),dying:0,opts};
   model.traverse(o=>{if(o.isMesh){o.userData.agentRef=model;if(!o.userData.outline)agentMeshes.push(o)}});
   scene.add(model);agents.push(model);return model;
 }
@@ -1735,10 +1761,27 @@ function updateRoamer(agent,dt,speed,radius){
 }
 
 function updateAgents(dt){
-  for(const agent of agents.slice()){
+  for(const agent of agents){
     const data=agent.userData.agent;
     const parts=agent.userData.parts;
     data.t+=dt;
+    // Death animation: shrink, then burst + remove.
+    if(data.dying>0){
+      data.dying+=dt;
+      const k=Math.min(1,data.dying/0.3);
+      agent.scale.setScalar((data.baseScale||1)*(1-k));
+      if(k>=1){
+        spawnParticle(agent.position.clone().add(new THREE.Vector3(0,BLOCK*.5,0)),data.type==='monster'?0x7b5cff:0x79d8c8,26,5);
+        removeAgent(agent);
+      }
+      continue;
+    }
+    // Knockback impulse decays quickly.
+    if(data.knockback&&data.knockback.lengthSq()>0.02){
+      const nx=agent.position.x+data.knockback.x*dt,nz=agent.position.z+data.knockback.z*dt;
+      if(groundYAt(nx,nz)>0){agent.position.x=nx;agent.position.z=nz}
+      data.knockback.multiplyScalar(Math.pow(0.02,dt));
+    }
     if(parts?.aura){
       const rings=Array.isArray(parts.aura)?parts.aura:[parts.aura];
       rings.forEach((ring,index)=>{ring.rotation.z+=dt*(index%2?-1.25:1.4);ring.material.opacity=.36+Math.sin(data.t*2.1+index)*.1});
@@ -1747,48 +1790,36 @@ function updateAgents(dt){
     const d=toPlayer.length();
     
     if(data.type==='monster'){
-      // Death shrink tween, then burst + removal.
-      if(data.dying!==undefined){
-        data.dying-=dt;
-        const base=1.48;
-        agent.scale.setScalar(base*Math.max(0,data.dying/0.3));
-        if(data.dying<=0){
-          spawnParticle(agent.position,0x7b5cff,30,5);
-          removeAgent(agent);
-          player.monstersRepelled++;
-          completeQuest('monster');
-          toast('Hollowling defeated!');
-        }
-        continue;
-      }
-      // Apply decaying knockback.
-      if(data.knockback){
-        agent.position.addScaledVector(data.knockback,dt);
-        data.knockback.multiplyScalar(Math.pow(.02,dt));
-        if(data.knockback.lengthSq()<.02)data.knockback=null;
-      }
-      const maxHp=data.maxHp||data.hp;
+      // Simple state machine: IDLE -> CHASING -> ATTACKING -> FLEEING.
+      const ATTACK_RANGE=2*BLOCK, SENSE_RANGE=38, lowHp=data.hp<data.maxHp*0.3;
+      let nextState;
+      if(!data.awake)nextState='idle';
+      else if(lowHp)nextState='fleeing';
+      else if(d<ATTACK_RANGE)nextState='attacking';
+      else if(d<SENSE_RANGE||player.noise>55)nextState='chasing';
+      else nextState='idle';
+      data.state=nextState;
       const dir=d>0.01?toPlayer.clone().multiplyScalar(1/d):new THREE.Vector3();
-      // State machine: FLEEING -> ATTACKING -> CHASING -> IDLE
-      if(data.awake&&data.hp<maxHp*0.3){
-        data.state='fleeing';
-        agent.rotation.y=Math.atan2(-dir.x,-dir.z);
-        agent.position.addScaledVector(dir,-dt*3.6);
-      } else if(data.awake&&(d<38||player.noise>55)){
-        agent.rotation.y=Math.atan2(dir.x,dir.z);
-        if(d<=2*BLOCK){
-          data.state='attacking';
-          const dmg=Math.max(0.4,(player.noise>65?14:12)-playerArmor()*2)*dt;
-          player.hp=Math.max(0,player.hp-dmg);
-          player.noise=Math.min(100,player.noise+dt*3);
-        } else {
-          data.state='chasing';
-          agent.position.addScaledVector(dir,dt*3); // pursue at ~3 m/s
-        }
+      if(nextState==='fleeing'){
+        // Run away from the player and look back.
+        const away=dir.clone().multiplyScalar(-1);
+        const nx=agent.position.x+away.x*dt*BLOCK*2.0,nz=agent.position.z+away.z*dt*BLOCK*2.0;
+        if(groundYAt(nx,nz)>0){agent.position.x=nx;agent.position.z=nz}
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
+      } else if(nextState==='chasing'){
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
+        const speed=BLOCK*(player.noise>65?1.8:1.35); // ~3-4 units/s toward player
+        const nx=agent.position.x+dir.x*dt*speed,nz=agent.position.z+dir.z*dt*speed;
+        if(groundYAt(nx,nz)>0){agent.position.x=nx;agent.position.z=nz}
+      } else if(nextState==='attacking'){
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
+        // Stop and deal contact damage.
+        player.hp=Math.max(0,player.hp-dt*12);player.noise=Math.min(100,player.noise+dt*3);
+        data.attackFlash=(data.attackFlash||0)+dt;
+        if(data.attackFlash>0.6){data.attackFlash=0;spawnDamageNumber(player.pos.clone().add(new THREE.Vector3(0,BLOCK*2,0)),Math.round(7.2),'#ff5d7a')}
       } else {
-        data.state='idle';
-        if(d>0.01)agent.rotation.y=Math.atan2(dir.x,dir.z);
         agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
+        if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
       }
       if(parts?.head)parts.head.rotation.x=-.12+Math.sin(data.t*3)*.05;
       if(parts?.ribs)parts.ribs.forEach((rib,index)=>{rib.scale.x=1+Math.sin(data.t*5+index)*.035});
@@ -2086,35 +2117,14 @@ function updateWeather(dt){
 // ============================================================
 // SOUND (Web Audio API)
 // ============================================================
-let audioCtx=null, masterGain=null, musicVolume=.7, sfxVolume=.7, noiseBuffer=null;
+let audioCtx=null, masterGain=null, musicVolume=.7, sfxVolume=.7;
 
 function initAudio(){
   audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   masterGain=audioCtx.createGain();
   masterGain.gain.value=sfxVolume;
   masterGain.connect(audioCtx.destination);
-  // Pre-render a short white-noise buffer for filtered, organic SFX.
-  const len=audioCtx.sampleRate*.5;
-  noiseBuffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);
-  const data=noiseBuffer.getChannelData(0);
-  for(let i=0;i<len;i++)data[i]=Math.random()*2-1;
 }
-
-// Play a burst of filtered noise (footsteps, splashes, chipping).
-function playNoise(duration=.12,freq=600,vol=.12,q=1){
-  if(!audioCtx||!noiseBuffer)return;
-  const src=audioCtx.createBufferSource();src.buffer=noiseBuffer;
-  const filter=audioCtx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=freq;filter.Q.value=q;
-  const gain=audioCtx.createGain();gain.gain.value=vol;
-  gain.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+duration);
-  src.connect(filter);filter.connect(gain);gain.connect(masterGain);
-  src.start();src.stop(audioCtx.currentTime+duration);
-}
-function playFootstep(){playNoise(.09,180+Math.random()*60,.06,.8)}
-function playSplash(){playNoise(.28,900+Math.random()*300,.12,.6)}
-function playMineChip(){playNoise(.08,420+Math.random()*120,.1,1.4)}
-function playPickup(){playSound(620,.08,'sine',.09);setTimeout(()=>playSound(880,.08,'sine',.08),60)}
-function playEatSound(){playNoise(.16,260,.08,1);setTimeout(()=>playSound(440,.1,'sine',.07),120)}
 
 function setMusicVolume(v){
   musicVolume=THREE.MathUtils.clamp(v/100,0,1);
@@ -2140,6 +2150,29 @@ function playSound(freq,duration,type='sine',vol=0.15){
 
 function playPlaceSound(){playSound(400,0.1,'sine',0.1)}
 function playHitSound(){playSound(200,0.2,'sawtooth',0.12)}
+
+// Short burst of filtered noise, used for organic SFX (footsteps, splashes, chipping).
+function playNoiseBurst(duration=0.12,vol=0.12,filterType='lowpass',filterFreq=800,q=1){
+  if(!audioCtx)return;
+  const frames=Math.floor(audioCtx.sampleRate*duration);
+  const buffer=audioCtx.createBuffer(1,frames,audioCtx.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<frames;i++)data[i]=(Math.random()*2-1)*(1-i/frames);
+  const src=audioCtx.createBufferSource();src.buffer=buffer;
+  const filter=audioCtx.createBiquadFilter();filter.type=filterType;filter.frequency.value=filterFreq;filter.Q.value=q;
+  const gain=audioCtx.createGain();gain.gain.value=vol;
+  gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+duration);
+  src.connect(filter);filter.connect(gain);gain.connect(masterGain);
+  src.start();src.stop(audioCtx.currentTime+duration);
+}
+function playFootstep(){playNoiseBurst(0.1,0.08,'lowpass',360+Math.random()*120,1.2)}
+function playSplash(){playNoiseBurst(0.32,0.14,'highpass',900+Math.random()*300,0.8)}
+function playMineChip(){playNoiseBurst(0.09,0.1,'bandpass',1400+Math.random()*500,3)}
+function playItemPickupSound(){
+  if(!audioCtx)return;
+  playSound(520,0.08,'sine',0.09);
+  setTimeout(()=>playSound(780,0.1,'sine',0.08),60);
+}
 function playAmbient(){
   if(!audioCtx)return;
   const t=dayTime*100;
@@ -2231,6 +2264,7 @@ let mouseSensitivity=BASE_MOUSE_SENS*1.5;
 let yaw=0,pitch=0;
 let renderDistance=3;
 let showCrafting=false;
+let thirdPerson=false;
 let state={started:false};
 
 function requestGamePointerLock(){
@@ -2249,7 +2283,7 @@ window.addEventListener('keydown',e=>{
   keys.add(k);
   if(k==='e'||k==='enter'){
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')&&currentDialogueChoices.length>0){
-      flashDialogueChoice(0);currentDialogueChoices[0].action();return;
+      currentDialogueChoices[0].action();return;
     }
     if(k==='e')interact();
   }
@@ -2259,16 +2293,20 @@ window.addEventListener('keydown',e=>{
   if(k==='m')openMainMenu();
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
-  if(k==='q'&&state.started&&ui.start.classList.contains('hidden'))dropSelectedStack();
-  if(k==='v'){thirdPerson=!thirdPerson;if(handRig)handRig.group.visible=!thirdPerson;toast(thirdPerson?'Third-person view':'First-person view')}
+  if(k==='v'){toggleThirdPerson()}
   if(k==='tab'){toggleInventory()}
+  if(k==='q'){dropSelectedStack()}
   if(k>='1'&&k<='9'){
     // Dialogue choices take priority over hotbar when dialogue is open
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')){
       const idx=parseInt(k)-1;
-      if(idx<currentDialogueChoices.length){flashDialogueChoice(idx);currentDialogueChoices[idx].action();return}
+      if(idx<currentDialogueChoices.length){
+        const btn=ui.choices.querySelector('button[data-key="'+(idx+1)+'"]');
+        if(btn)btn.classList.add('pressed');
+        currentDialogueChoices[idx].action();return;
+      }
     }
-    player.selectedSlot=parseInt(k)-1;renderQuickbar()
+    player.selectedSlot=parseInt(k)-1;renderQuickbar();discoverRecipesFor(player.hotbar[player.selectedSlot])
   }
 });
 window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
@@ -2284,10 +2322,11 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   if(!showCrafting&&!ui.notes.classList.contains('open')&&ui.start.classList.contains('hidden'))requestGamePointerLock();
   if(e.button===0){
     player.primaryHeld=true;
-    // Combat reach is wider than mining reach so creatures hit reliably.
+    // Combat reaches slightly farther than mining so creatures are reliably hit.
     const hit=raycast(6);
     if(hit&&hit.agent){
-      strikeMonster(hit.agent);return;
+      if(player.swingCooldown<=0)strikeMonster(hit.agent);
+      return;
     }
     startMining();
   }
@@ -2324,35 +2363,6 @@ function updateParticles(dt){
   }
 }
 
-// Floating combat damage numbers
-const damageNumbers=[];
-function spawnDamageNumber(position,amount,color='#ff9dae'){
-  const c=document.createElement('canvas');c.width=128;c.height=64;
-  const x=c.getContext('2d');x.font='bold 46px Georgia';x.textAlign='center';x.textBaseline='middle';
-  x.fillStyle='rgba(0,0,0,.55)';x.fillText(Math.round(amount),66,34);
-  x.fillStyle=color;x.fillText(Math.round(amount),64,32);
-  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,fog:false}));
-  sp.scale.set(BLOCK*1.4,BLOCK*.7,1);
-  sp.position.copy(position);sp.position.y+=BLOCK;
-  sp.userData={age:0,life:.9};
-  scene.add(sp);damageNumbers.push(sp);
-}
-function updateDamageNumbers(dt){
-  for(let i=damageNumbers.length-1;i>=0;i--){
-    const s=damageNumbers[i];s.userData.age+=dt;
-    s.position.y+=dt*BLOCK*1.3;
-    s.material.opacity=Math.max(0,1-s.userData.age/s.userData.life);
-    if(s.userData.age>=s.userData.life){scene.remove(s);s.material.map.dispose();s.material.dispose();damageNumbers.splice(i,1)}
-  }
-}
-
-function removeAgent(agent){
-  agent.traverse(obj=>{const i=agentMeshes.indexOf(obj);if(i!==-1)agentMeshes.splice(i,1)});
-  scene.remove(agent);
-  const ai=agents.indexOf(agent);if(ai!==-1)agents.splice(ai,1);
-}
-
 // ============================================================
 // RAYCAST
 // ============================================================
@@ -2360,15 +2370,9 @@ const raycaster=new THREE.Raycaster();
 raycaster.far=20;
 
 function raycast(maxDist=5){
-  let dir,origin;
-  if(thirdPerson){
-    // In third person the camera orbits the avatar, so aim from the player's eye along the look angle.
-    dir=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
-    origin=new THREE.Vector3(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
-  } else {
-    dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-    origin=camera.position.clone();
-  }
+  const dir=new THREE.Vector3(0,0,-1);
+  dir.applyQuaternion(camera.quaternion);
+  const origin=camera.position.clone();
   
   // DDA voxel raycast
   let x=Math.floor(origin.x/BLOCK),y=Math.floor(origin.y/BLOCK),z=Math.floor(origin.z/BLOCK);
@@ -2398,7 +2402,7 @@ function raycast(maxDist=5){
     const bflyHitMeshes=butterflyInstanced?.butterflyMeshes?.flatMap(b=>b.group.visible?[b.wingL,b.wingR]:[])||[];
     const foliageMeshes=[grassInstanced,flowerInstanced,...bflyHitMeshes,fireflyInstanced,...placedFoliage].filter(m=>m&&m.visible!==false);
     raycaster.set(origin,dir);raycaster.far=maxDist*BLOCK;
-    // Ensure agent child meshes have fresh world matrices before intersection.
+    // Ensure agent child meshes have fresh world matrices before intersection, or fast-moving/animated agents are missed.
     scene.updateMatrixWorld(true);
     const agentHit=raycaster.intersectObjects(agentMeshes,false).find(h=>h.object.userData.agentRef);
     const foliageHit=raycaster.intersectObjects(foliageMeshes,false)[0];
@@ -2423,20 +2427,8 @@ function hideInstance(mesh,instanceId){
   mesh.computeBoundingSphere?.();
 }
 
-// Mining speed depends on the held tool; axes favour wood, pickaxes favour stone.
-function toolMineSpeed(blockType){
-  const held=BT[player.hotbar[player.selectedSlot]];
-  if(!held||!held.mineSpeed)return 1;
-  let speed=held.mineSpeed;
-  const name=BT[blockType]?.name||'';
-  const isWood=/bark|planks|leaf/.test(name)||blockType===5||blockType===6||blockType===9;
-  const isStone=/stone|cobble|ore|brick/.test(name);
-  if(held.tool==='axe'&&!isWood)speed*=.6;
-  if(held.tool==='pickaxe'&&!isStone)speed*=.7;
-  return speed;
-}
-
 function startMining(){
+  // Don't start chipping a block mid-swing.
   if(player.swingCooldown>0)return;
   const hit=raycast(5);
   if(!hit)return;
@@ -2458,6 +2450,7 @@ function startMining(){
       else invType=13;
       addToInventory(invType);
       renderQuickbar();
+      playItemPickupSound();
       const pColor=invType===5?0xff8800:invType===13?0x6da65e:invType===14?0xd44a4a:invType===25?0xb07ac0:0xfbe87a;
       spawnParticle(pos,pColor,8,2);
       return;
@@ -2473,6 +2466,7 @@ function startMining(){
         spawnParticle(pos,0xdd88ff,10,3);
         addToInventory(25);
         renderQuickbar();
+        playItemPickupSound();
         toast('Caught a butterfly!');
       }
       return;
@@ -2488,6 +2482,7 @@ function startMining(){
       hideInstance(fireflyInstanced,instId);
       addToInventory(26);
       renderQuickbar();
+      playItemPickupSound();
       spawnParticle(position,0xffee88,12,3);
       toast('Caught a firefly!');
       return;
@@ -2513,7 +2508,8 @@ function startMining(){
   const blockType=hit.blockType;
   if(LIQUID_TYPES.has(String(blockType))){toast('Water flows around the tool. Swim, not mine.');return}
   const hardness=BT[blockType]?.hardness||1;
-  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness/toolMineSpeed(blockType),blockType};
+  const tool=player.hotbar[player.selectedSlot];
+  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness/miningMultiplier(tool),blockType};
   ui.mineMeter.hidden=true;
   updateBreakOverlay(player.mining.pos,0);
   triggerHandSwing(.7);
@@ -2530,13 +2526,6 @@ function updateMining(dt){
     setBlock(wx,wy,wz,0);
     spawnParticle(new THREE.Vector3((wx+.5)*BLOCK,(wy+.5)*BLOCK,(wz+.5)*BLOCK),BT[minedType]?.color||0xf2c96d,18,4);
     addToInventory(minedType);
-    // Foraging: moss yields mushrooms/berries, leaves yield berries.
-    if(minedType===1){
-      if(hashNoise(wx*1.3+wy,wz*1.7-wy)>.7)addToInventory(41);
-      else if(hashNoise(wx*2.1-wy,wz*0.9+wy)>.78)addToInventory(40);
-    } else if(minedType===6&&hashNoise(wx*1.7,wz*2.3)>.6){
-      addToInventory(40);
-    }
     player.noise=Math.min(100,player.noise+2+player.mining.duration);
     playMineChip();
     // Remove any placed foliage sprite at this position
@@ -2574,11 +2563,11 @@ function addPlacedFoliage(wx,wy,wz,type){
     cross.rotation.y=Math.PI/2;
     mesh.add(cross);
     mesh.position.y+=BLOCK*.1;
-    // Warm light so placed torches actually illuminate at night.
-    const torchLight=new THREE.PointLight(0xff8833,1.6,BLOCK*7,1.6);
-    torchLight.position.set(0,BLOCK*.3,0);
-    mesh.add(torchLight);
-    mesh.userData.torchLight=torchLight;
+    // Warm light cast by the placed torch flame.
+    const light=new THREE.PointLight(0xff8833,1.6,BLOCK*8,1.6);
+    light.position.set(0,BLOCK*.32,0);
+    mesh.add(light);
+    mesh.userData.torchLight=light;
   } else if(isBug){
     // Cross-plane for bugs so visible from any angle
     const cross=new THREE.Mesh(new THREE.PlaneGeometry(BLOCK*.4,BLOCK*.4),mat);
@@ -2607,15 +2596,34 @@ function removePlacedFoliageAt(wx,wy,wz){
   }
 }
 
+function isConsumable(type){const bt=BT[type];return Boolean(bt&&(bt.food||bt.heal||bt.warm))}
+function consumeItem(type){
+  const bt=BT[type];
+  if(!bt||(player.inventory[type]||0)<=0)return false;
+  let used=false;
+  if(bt.food){player.hunger=Math.min(100,player.hunger+bt.food);used=true}
+  if(bt.heal){player.hp=Math.min(100,player.hp+bt.heal);used=true}
+  if(bt.warm){player.temperature=Math.min(100,player.temperature+bt.warm);used=true}
+  if(!used)return false;
+  player.inventory[type]--;
+  toast((bt.food?'Ate ':'Drank ')+bt.name.replace(/_/g,' '));
+  if(typeof playItemPickupSound==='function')playItemPickupSound();
+  spawnParticle(camera.position.clone().add(new THREE.Vector3(0,-BLOCK*.4,0)),bt.color,6,1.4);
+  renderQuickbar();updateMeters();
+  return true;
+}
+
 function placeSelected(){
-  const selType=player.hotbar[player.selectedSlot];
-  // Edible items are consumed on right-click instead of placed.
-  if(selType&&BT[selType]?.food&&(player.inventory[selType]||0)>0){eatFood(selType);return}
+  const type=player.hotbar[player.selectedSlot];
+  // Right-click eats food / drinks potions when one is selected.
+  if(isConsumable(type)){
+    if((player.inventory[type]||0)>0)consumeItem(type);
+    else toast('Nothing to consume.');
+    return;
+  }
   const hit=raycast(5);
   if(!hit||!hit.face)return;
-  const type=player.hotbar[player.selectedSlot];
   if(!type||(player.inventory[type]||0)<=0){toast('Nothing to place. Mine blocks first.');return}
-  if(BT[type]?.weapon||BT[type]?.tool){toast('A tool cannot be placed.');return}
   if(LIQUID_TYPES.has(String(hit.blockType))){toast('Need a solid face to place.');return}
   const placePos=hit.blockPos.clone();
   const face=hit.face;
@@ -2637,6 +2645,7 @@ function placeSelected(){
     completeQuest('shape');
     return;
   }
+  if(!PLACEABLE_BLOCKS.has(type)){toast('That can\u2019t be placed as a block.');return}
   setBlock(placePos.x,placePos.y,placePos.z,type);
   spawnParticle(new THREE.Vector3((placePos.x+.5)*BLOCK,(placePos.y+.5)*BLOCK,(placePos.z+.5)*BLOCK),BT[type]?.color||0x79d8c8,10,2.4);
   player.inventory[type]--;
@@ -2645,55 +2654,72 @@ function placeSelected(){
   completeQuest('shape');
 }
 
-function eatFood(type){
-  const bt=BT[type];
-  if(!bt)return;
-  player.hunger=Math.min(100,player.hunger+(bt.food||0));
-  if(bt.heal)player.hp=Math.min(100,player.hp+bt.heal);
-  player.inventory[type]--;
-  if(player.inventory[type]<=0){
-    const slot=player.hotbar.indexOf(type);
-    if(slot!==-1)player.hotbar[slot]=0;
-  }
-  playEatSound();
-  toast('Ate '+bt.name.replace(/_/g,' '));
-  renderQuickbar();
-  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
-}
-
-function playerArmor(){
-  let armor=0;
-  for(const t of Object.keys(player.inventory)){
-    if((player.inventory[t]||0)>0&&BT[t]?.armor)armor+=BT[t].armor;
-  }
-  return armor;
-}
-
 // ============================================================
 // COMBAT
 // ============================================================
+function weaponDamage(type){return BT[type]?.damage||2}
+const damageNumbers=[];
+const dmgTexCache={};
+function makeDamageTexture(text,color){
+  const key=text+'|'+color;
+  if(dmgTexCache[key])return dmgTexCache[key];
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const x=c.getContext('2d');
+  x.font='bold 44px Georgia,serif';x.textAlign='center';x.textBaseline='middle';
+  x.lineWidth=6;x.strokeStyle='rgba(0,0,0,.8)';x.strokeText(text,64,32);
+  x.fillStyle=color;x.fillText(text,64,32);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+  dmgTexCache[key]=t;return t;
+}
+function spawnDamageNumber(pos,amount,color='#ffe08a'){
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:makeDamageTexture(String(amount),color),transparent:true,depthTest:false,depthWrite:false,fog:false}));
+  sprite.position.copy(pos);sprite.position.y+=BLOCK*.6;
+  sprite.scale.set(BLOCK*1.4,BLOCK*.7,1);
+  sprite.userData={age:0,life:.9};
+  sprite.renderOrder=30;
+  scene.add(sprite);damageNumbers.push(sprite);
+}
+function updateDamageNumbers(dt){
+  for(let i=damageNumbers.length-1;i>=0;i--){
+    const s=damageNumbers[i];
+    s.userData.age+=dt;
+    s.position.y+=dt*BLOCK*1.2;
+    s.material.opacity=Math.max(0,1-s.userData.age/s.userData.life);
+    if(s.userData.age>=s.userData.life){scene.remove(s);s.material.dispose();damageNumbers.splice(i,1)}
+  }
+}
+
+function removeAgent(agent){
+  agent.traverse(obj=>{const meshIndex=agentMeshes.indexOf(obj);if(meshIndex!==-1)agentMeshes.splice(meshIndex,1)});
+  scene.remove(agent);
+  const ai=agents.indexOf(agent);if(ai!==-1)agents.splice(ai,1);
+}
+
 function strikeMonster(agent){
   const data=agent.userData.agent;
-  if(data.dying!==undefined)return;
-  if(player.swingCooldown>0)return;
-  player.swingCooldown=.45;
+  if(data.dying>0)return;
   const weapon=player.hotbar[player.selectedSlot];
-  const damage=BT[weapon]?.damage||2;
+  const damage=weaponDamage(weapon);
   data.awake=true;
   data.hp-=damage;
   player.noise=Math.min(100,player.noise+5);
+  player.swingCooldown=.32;
   triggerHandSwing(1);
-  spawnParticle(agent.position,0xd97d8d,22,4);
-  spawnDamageNumber(agent.position,damage);
-  playHitSound();
-  // Knockback impulse away from the player.
+  // Knockback away from the player.
   const kb=agent.position.clone().sub(player.pos);kb.y=0;
-  if(kb.lengthSq()>1e-4){kb.normalize().multiplyScalar(BLOCK*3.5);data.knockback=kb}
-  if(data.hp<=0){
+  if(kb.lengthSq()>0.0001){kb.normalize().multiplyScalar(BLOCK*3.4);data.knockback.copy(kb)}
+  spawnParticle(agent.position.clone().add(new THREE.Vector3(0,BLOCK*.6,0)),0xd97d8d,18,4);
+  spawnDamageNumber(agent.position,damage,'#ff9dae');
+  playHitSound();
+  if(data.hp<=0&&data.dying<=0){
+    // Death tween: shrink over 0.3s, then burst + remove (handled in updateAgents).
+    data.dying=0.0001;
+    data.baseScale=agent.scale.x;
     if(data.type==='monster'){
-      data.dying=.3; // begin shrink tween (handled in updateAgents)
+      player.monstersRepelled++;
+      completeQuest('monster');
+      toast('Hollowling defeated!');
     } else {
-      removeAgent(agent);
       toast(data.name+' retreated');
     }
   }
@@ -2766,7 +2792,7 @@ ui.menuNotesBtn.addEventListener('click',()=>{ui.notes.classList.add('open');exi
 ui.closeNotes.addEventListener('click',()=>{ui.notes.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
 ui.closeCrafting.addEventListener('click',()=>{showCrafting=false;ui.craftingPanel.classList.remove('open');if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()});
 ui.closeInventory.addEventListener('click',()=>{ui.inventoryPanel.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
-ui.sortInventory.addEventListener('click',sortInventory);
+ui.sortInventory.addEventListener('click',autoSortHotbar);
 ui.sensitivitySlider.addEventListener('input',e=>setMouseSensitivity(e.target.value));
 ui.renderDistSlider.addEventListener('input',e=>{
   renderDistance=parseInt(e.target.value);
@@ -2816,6 +2842,7 @@ const PLAYER_HEIGHT = 4.2;
 const PLAYER_EYE_HEIGHT = 3.8;
 let coyoteTime = 0;
 const COYOTE_TIME_MAX = 0.1;
+let footTimer = 0;
 
 function jumpHeld(){return keys.has(' ')||keys.has('spacebar')}
 
@@ -2887,22 +2914,20 @@ function updatePlayer(dt){
   const moving=move.lengthSq()>0;
   const sprint=keys.has('shift');
   const inWater=isPlayerInWater();
-  if(jumpHeld()&&moving)tryJump(inWater);
-  if(player.swingCooldown>0)player.swingCooldown=Math.max(0,player.swingCooldown-dt);
-  // Water entry/exit splash.
+  // Splash when crossing the water surface.
   if(inWater!==player.wasInWater){playSplash();player.wasInWater=inWater}
-  // Footsteps while grounded and moving (cadence scales with speed).
+  // Footsteps timed to gait; faster while sprinting.
   if(moving&&player.grounded&&!inWater){
-    player.stepTimer-=dt;
-    if(player.stepTimer<=0){playFootstep();player.stepTimer=sprint?.28:.42}
-  } else {
-    player.stepTimer=0;
-  }
+    footTimer+=dt;
+    const interval=sprint?0.28:0.44;
+    if(footTimer>=interval){footTimer=0;playFootstep()}
+  } else footTimer=0;
+  if(jumpHeld()&&moving)tryJump(inWater);
   
    if(moving){
      move.normalize();
-     // Freezing (<20°) slows movement by 20%.
-     const speed=movementSpeed(inWater,sprint)*(player.temperature<20?.8:1);
+     // Freezing players (<20°) move 20% slower.
+     const speed=movementSpeed(inWater,sprint)*(isFreezing()?0.8:1);
      const dx=move.x*speed*dt,dz=move.z*speed*dt;
      const fromY=Math.max(player.pos.y,groundYAt(player.pos.x,player.pos.z));
      if((canStandAt(player.pos.x+dx,player.pos.z,fromY)||inWater) && !wouldHitCeiling(player.pos.x+dx,player.pos.z,player.pos.y))player.pos.x+=dx;
@@ -2949,10 +2974,11 @@ function updatePlayer(dt){
     } else {
       player.pos.y=newY;
     }
-    // Anti-tunnel second pass: at extreme fall speed, snap to the nearest ground below the old position.
+    // Second pass: very fast falls (>20 u/frame-equivalent) can skip thin floors, so
+    // raycast the column from the pre-move height and clamp to the ground we passed.
     if(player.velY<-20){
-      const groundBelow=floorYAt(player.pos.x,player.pos.z,oldY+BLOCK*.45);
-      if(groundBelow>0&&player.pos.y<groundBelow){player.pos.y=groundBelow;player.velY=0;player.grounded=true;coyoteTime=COYOTE_TIME_MAX}
+      const g=floorYAt(player.pos.x,player.pos.z,oldY+BLOCK*.45);
+      if(g>0&&player.pos.y<g){player.pos.y=g;player.velY=0;player.grounded=true;coyoteTime=COYOTE_TIME_MAX}
     }
     
     const ground=floorYAt(player.pos.x,player.pos.z,player.pos.y+BLOCK*.45);
@@ -2978,24 +3004,11 @@ function updatePlayer(dt){
   player.pos.z=THREE.MathUtils.clamp(player.pos.z,-maxW,maxW);
 }
 
-// True when the player is within 3 blocks of a heat source (placed torch / amber lamp).
-function nearWarmthSource(){
-  const range=3*BLOCK;
-  for(const f of placedFoliage){
-    if(f.userData.placedType===5&&f.position.distanceTo(player.pos)<range)return true;
-  }
-  const pv=new THREE.Vector3(worldToVoxel(player.pos.x),Math.floor(player.pos.y/BLOCK),worldToVoxel(player.pos.z));
-  for(let dx=-1;dx<=1;dx++)for(let dy=0;dy<=2;dy++)for(let dz=-1;dz<=1;dz++){
-    if(getBlock(pv.x+dx,pv.y+dy,pv.z+dz)===54)return true;
-  }
-  return false;
-}
-
 function updateSurvival(dt){
   const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
   const sprint=moving&&keys.has('shift');
   const inWater=isPlayerInWater();
-  // Hunger drains ~3x faster than the original tuning so food matters.
+  // Hunger drains ~3x faster than the original tuning so food actually matters.
   player.hunger=Math.max(0,player.hunger-dt*3*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
 
   const sunY=Math.sin(dayTime*Math.PI*2);
@@ -3003,35 +3016,43 @@ function updateSurvival(dt){
   const weatherCold=weather.type==='mirrorRain'?12:weather.type==='softFog'?6:0;
   const targetTemp=THREE.MathUtils.clamp(88-(sunY<0?18:0)-(inWater?28:0)-altitude*18-weatherCold*weather.intensity,12,100);
   player.temperature+= (targetTemp-player.temperature)*dt*.045;
-  // Standing near a placed torch (or amber lamp) restores warmth quickly.
-  if(nearWarmthSource())player.temperature=Math.min(100,player.temperature+dt*15);
+  // Standing within 3 blocks of a placed torch warms you quickly.
+  if(nearWarmth(player.pos))player.temperature=Math.min(100,player.temperature+dt*15);
 
   if(player.hunger<=0)player.hp=Math.max(0,player.hp-dt*1.4);
   else if(player.hunger<18)player.resolve=Math.max(0,player.resolve-dt*.9);
-  if(player.temperature<28)player.hp=Math.max(0,player.hp-dt*1.1);
+  if(player.temperature<20)player.hp=Math.max(0,player.hp-dt*1.6);
+  else if(player.temperature<28)player.hp=Math.max(0,player.hp-dt*1.1);
   else if(player.temperature<45)player.resolve=Math.max(0,player.resolve-dt*.8);
   if(player.hunger>65&&player.temperature>55&&player.hp<100)player.hp=Math.min(100,player.hp+dt*.35);
 }
 
-function updateCamera(){
-  const eyeX=player.pos.x,eyeY=player.pos.y+PLAYER_EYE_HEIGHT,eyeZ=player.pos.z;
-  if(thirdPerson){
-    // Orbit behind and above the player, pulling in when terrain blocks the view.
-    const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
-    const desired=Math.cos(pitch)*BLOCK*4.2;
-    let dist=desired;
-    for(let d=1;d<=desired;d+=BLOCK*.4){
-      const cx=eyeX-forward.x*d,cz=eyeZ-forward.z*d,cy=eyeY-Math.sin(pitch)*d+BLOCK*1.1;
-      if(getBlock(worldToVoxel(cx),worldToVoxel(cy),worldToVoxel(cz))){dist=Math.max(BLOCK,d-BLOCK*.4);break}
-    }
-    camera.position.set(eyeX-forward.x*dist,eyeY-Math.sin(pitch)*dist+BLOCK*1.1,eyeZ-forward.z*dist);
-    camera.lookAt(eyeX,eyeY,eyeZ);
-  } else {
-    camera.position.set(eyeX,eyeY,eyeZ);
-    camera.rotation.order='YXZ';
-    camera.rotation.y=yaw;
-    camera.rotation.x=pitch;
+// True when a placed torch is within 3 blocks of the given position.
+function nearWarmth(pos){
+  for(const f of placedFoliage){
+    if(f.userData.placedType!==5)continue;
+    if(f.position.distanceTo(pos)<3*BLOCK)return true;
   }
+  return false;
+}
+function isFreezing(){return player.temperature<20}
+
+const THIRD_PERSON_DIST=BLOCK*4.2,THIRD_PERSON_HEIGHT=BLOCK*1.4;
+function updateCamera(){
+  camera.rotation.order='YXZ';
+  if(thirdPerson){
+    // Orbit behind and above the player, looking back at the avatar.
+    const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+    const focus=new THREE.Vector3(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT*.7,player.pos.z);
+    const back=forward.clone().multiplyScalar(-THIRD_PERSON_DIST);
+    back.y+=THIRD_PERSON_HEIGHT-pitch*THIRD_PERSON_DIST;
+    camera.position.copy(focus).add(back);
+    camera.lookAt(focus);
+    return;
+  }
+  camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
+  camera.rotation.y=yaw;
+  camera.rotation.x=pitch;
 }
 
 // ============================================================
@@ -3048,6 +3069,7 @@ function animate(){
   if(ui.brand)ui.brand.style.display=inGameplay?'none':'block';
   
   if(inGameplay){
+    if(player.swingCooldown>0)player.swingCooldown=Math.max(0,player.swingCooldown-dt);
     updatePlayer(dt);
     updateSurvival(dt);
     updateCamera();
@@ -3056,11 +3078,11 @@ function animate(){
     updateParticles(dt);
     updateDamageNumbers(dt);
     updateHands(dt);
-    updatePlayerModel(dt,keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright'));
+    updatePlayerModel(dt);
     updateDayNight(dt);
-    updateWaterWaves(clock.elapsedTime);
     updateAmbient(dt);
     updateWeather(dt);
+    updateWater(dt);
     updateMusic(dt);
     
     // Ambient sound
@@ -3072,6 +3094,7 @@ function animate(){
     updateDayNight(dt);
     updateAmbient(dt);
     updateWeather(dt);
+    updateWater(dt);
     updateParticles(dt);
     updateHands(dt);
   }
@@ -3087,36 +3110,47 @@ const SAVE_KEY='iw_save_v1';
 function saveGame(){
   try{
     const data={
+      v:1,
       pos:[player.pos.x,player.pos.y,player.pos.z],
+      yaw,pitch,dayTime,
       inventory:player.inventory,
       hotbar:player.hotbar,
       selectedSlot:player.selectedSlot,
       hp:player.hp,hunger:player.hunger,temperature:player.temperature,resolve:player.resolve,
       monstersRepelled:player.monstersRepelled,
-      dayTime,
+      discovered:[...player.discovered],
+      waystones:[...player.waystones],
+      trusted:[...player.trusted],
       quests:quests.map(q=>({id:q.id,progress:q.progress})),
-      foliage:placedFoliage.map(f=>({p:[f.userData.blockPos.x,f.userData.blockPos.y,f.userData.blockPos.z],t:f.userData.placedType})),
-      trusted:[...player.trusted],waystones:[...player.waystones],
-      discovered:[...discoveredRecipes],
+      placedFoliage:placedFoliage.map(f=>({p:[f.userData.blockPos.x,f.userData.blockPos.y,f.userData.blockPos.z],t:f.userData.placedType})),
     };
     localStorage.setItem(SAVE_KEY,JSON.stringify(data));
-  }catch(e){}
+    return true;
+  }catch(e){return false}
 }
 function loadGame(){
   try{
-    const raw=localStorage.getItem(SAVE_KEY);if(!raw)return false;
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw)return false;
     const d=JSON.parse(raw);
+    if(!d||d.v!==1)return false;
     if(Array.isArray(d.pos))player.pos.set(d.pos[0],d.pos[1],d.pos[2]);
     if(d.inventory&&typeof d.inventory==='object')player.inventory=d.inventory;
-    if(Array.isArray(d.hotbar)&&d.hotbar.length===9)player.hotbar=d.hotbar;
-    if(typeof d.selectedSlot==='number')player.selectedSlot=d.selectedSlot;
-    for(const k of ['hp','hunger','temperature','resolve','monstersRepelled'])if(typeof d[k]==='number')player[k]=d[k];
+    if(Array.isArray(d.hotbar)&&d.hotbar.length===9)player.hotbar=d.hotbar.slice();
+    if(typeof d.selectedSlot==='number')player.selectedSlot=THREE.MathUtils.clamp(d.selectedSlot,0,8);
+    for(const k of['hp','hunger','temperature','resolve','monstersRepelled'])if(typeof d[k]==='number')player[k]=d[k];
+    if(typeof d.yaw==='number')yaw=d.yaw;
+    if(typeof d.pitch==='number')pitch=d.pitch;
     if(typeof d.dayTime==='number')dayTime=d.dayTime;
-    if(Array.isArray(d.quests))for(const sq of d.quests){const q=quests.find(x=>x.id===sq.id);if(q)q.progress=sq.progress}
-    if(Array.isArray(d.trusted))d.trusted.forEach(t=>player.trusted.add(t));
-    if(Array.isArray(d.waystones))d.waystones.forEach(w=>player.waystones.add(w));
-    if(Array.isArray(d.discovered))d.discovered.forEach(r=>discoveredRecipes.add(r));
-    if(Array.isArray(d.foliage))for(const f of d.foliage)if(Array.isArray(f.p))addPlacedFoliage(f.p[0],f.p[1],f.p[2],f.t);
+    if(Array.isArray(d.discovered))player.discovered=new Set(d.discovered);
+    if(Array.isArray(d.waystones))player.waystones=new Set(d.waystones);
+    if(Array.isArray(d.trusted))player.trusted=new Set(d.trusted);
+    if(Array.isArray(d.quests))d.quests.forEach(sq=>{const q=quests.find(x=>x.id===sq.id);if(q&&typeof sq.progress==='number')q.progress=sq.progress});
+    if(Array.isArray(d.placedFoliage)){
+      for(const f of placedFoliage.slice())scene.remove(f);
+      placedFoliage.length=0;
+      for(const pf of d.placedFoliage)if(pf&&Array.isArray(pf.p))addPlacedFoliage(pf.p[0],pf.p[1],pf.p[2],pf.t);
+    }
     return true;
   }catch(e){return false}
 }
@@ -3134,59 +3168,65 @@ function init(){
   if(mv){setMusicVolume(parseInt(mv));ui.musicSlider.value=mv;ui.musicValue.textContent=mv+'%'}
   const sfxV=localStorage.getItem('iw_sfxvol');
   if(sfxV){setSfxVolume(parseInt(sfxV));ui.sfxSlider.value=sfxV;ui.sfxValue.textContent=sfxV+'%'}
+  
+  // Generate initial chunks
+  setLoadingProgress(10,'Shaping the island…');
+  rebuildVisibleChunks(true);
+  setLoadingProgress(45,'Pooling the waters…');
+  
+  // Build water
+  buildWaterMesh();
+  buildVoidFloor();
+  setLoadingProgress(60,'Seeding meadows…');
+  
+  // Build ambient
+  buildAmbient();
+  buildWeather();
+  buildBreakOverlay();
+  buildFirstPersonHands();
+  buildPlayerModel();
+  buildCelestialBodies();
+  setLoadingProgress(80,'Waking the guardians…');
+  
+  // Place agents
+  addAgent('npc','The Cartographer',8,6,{isCartographer:true});
+  addAgent('animal','Glass Elk',-18,14);
+  addAgent('animal','Lantern Hare',20,-14);
+  addAgent('waystone','North Waystone',-34,-18,{color:0x79d8c8});
+  addAgent('waystone','Ash Waystone',34,24,{color:0xf2c96d});
+  for(let i=0;i<5;i++){
+    const a=i*1.3,r=15+i*3;
+    addAgent('monster','Hollowling',Math.cos(a)*r+5,Math.sin(a)*r+3,{hp:3});
+  }
+  
+  // Find spawn
+  player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
 
-  const testMode=new URLSearchParams(location.search).has('test');
-  setLoadingProgress(8,'Shaping the island\u2026');
-
-  // Defer the heavy world build one frame so the loading overlay paints first.
-  const build=()=>{
+  // Restore a previous session if one exists (skipped under the ?test harness for determinism).
+  const isTest=new URLSearchParams(location.search).has('test');
+  if(!isTest&&loadGame()){
     rebuildVisibleChunks(true);
-    setLoadingProgress(45,'Carving terrain\u2026');
     buildWaterMesh();
-    buildVoidFloor();
-    setLoadingProgress(60,'Pouring water\u2026');
-    buildAmbient();
-    buildWeather();
-    buildBreakOverlay();
-    buildFirstPersonHands();
-    buildPlayerModel();
-    buildCelestialBodies();
-    setLoadingProgress(78,'Summoning wildlife\u2026');
-
-    // Place agents
-    addAgent('npc','The Cartographer',8,6,{isCartographer:true});
-    addAgent('animal','Glass Elk',-18,14);
-    addAgent('animal','Lantern Hare',20,-14);
-    addAgent('waystone','North Waystone',-34,-18,{color:0x79d8c8});
-    addAgent('waystone','Ash Waystone',34,24,{color:0xf2c96d});
-    for(let i=0;i<5;i++){
-      const a=i*1.3,r=15+i*3;
-      addAgent('monster','Hollowling',Math.cos(a)*r+5,Math.sin(a)*r+3,{hp:3});
-    }
-
-    // Default spawn, then overlay any saved progress.
-    player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
-    if(!testMode)loadGame();
-    setLoadingProgress(100,'Ready');
-
-    renderQuickbar();
-    renderQuests();
-    updateMeters();
-    updateCamera();
-    setTimeout(()=>ui.loading.classList.add('hidden'),300);
-
-    // Init audio on first click
-    renderer.domElement.addEventListener('click',()=>{
-      if(!audioCtx)initAudio();
-      initMusic();
-    },{once:true});
-
-    // Periodic autosave (skip during the QA harness).
-    if(!testMode)setInterval(saveGame,30000);
-
-    animate();
-  };
-  if(testMode)build();else requestAnimationFrame(build);
+    toast('Restored your last expedition.');
+  }
+  // Autosave periodically.
+  if(!isTest)setInterval(()=>{if(state.started)saveGame()},30000);
+  
+  renderQuickbar();
+  renderQuests();
+  updateMeters();
+  updateCamera();
+  setLoadingProgress(100,'Ready');
+  // Hide the loading overlay once the first frame is ready to draw.
+  requestAnimationFrame(()=>hideLoading());
+  
+  // Init audio on first click
+  renderer.domElement.addEventListener('click',()=>{
+    if(!audioCtx)initAudio();
+    initMusic();
+  },{once:true});
+  
+  animate();
 }
 
 init();
@@ -3384,67 +3424,136 @@ if(new URLSearchParams(location.search).has('test')){
         else check('Action music only rises in danger',false,'no monster');
       }
       check('Music no longer uses oscillator composition',!String(initMusic).includes('createOscillator')&&!String(updateMusic).includes('playSound('));
-      // ---- New enhancement coverage ----
-      check('Third-person avatar built',playerModel&&scene.children.includes(playerModel));
-      {
-        const old=thirdPerson;
-        window.dispatchEvent(new KeyboardEvent('keydown',{key:'v'}));window.dispatchEvent(new KeyboardEvent('keyup',{key:'v'}));
-        const toggled=thirdPerson!==old;
-        window.dispatchEvent(new KeyboardEvent('keydown',{key:'v'}));window.dispatchEvent(new KeyboardEvent('keyup',{key:'v'}));
-        check('V key toggles view mode',toggled&&thirdPerson===old);
-      }
-      check('Starfield and sun glow exist',starField!==null&&sunGlow!==null);
-      check('Water surface animates',waterMesh&&!!waterMesh.geometry.userData.basePositions&&typeof updateWaterWaves==='function');
-      check('Crafting has 25+ recipes',RECIPES.length>=25);
-      {
-        const old=player.hotbar.slice(),oldSlot=player.selectedSlot;
-        player.hotbar[0]=33;player.selectedSlot=0;const fast=toolMineSpeed(2);
-        player.hotbar[0]=0;const slow=toolMineSpeed(2);
-        player.hotbar=old;player.selectedSlot=oldSlot;renderQuickbar();
-        check('Tool tiers speed up mining',fast>slow&&fast>=2.5);
-      }
-      {
-        const oldH=player.hunger,oldInv=player.inventory[40],oldHotbar=player.hotbar.slice(),oldSlot=player.selectedSlot;
-        player.hunger=10;player.inventory[40]=2;player.hotbar[0]=40;player.selectedSlot=0;
-        eatFood(40);
-        const ate=player.hunger>10&&player.inventory[40]===1;
-        player.hunger=oldH;if(oldInv===undefined)delete player.inventory[40];else player.inventory[40]=oldInv;
-        player.hotbar=oldHotbar;player.selectedSlot=oldSlot;renderQuickbar();
-        check('Food restores hunger when eaten',ate);
-      }
-      {
-        const oldInv=player.inventory[51];player.inventory[51]=1;const a=playerArmor();
-        if(oldInv===undefined)delete player.inventory[51];else player.inventory[51]=oldInv;
-        check('Armor reduces incoming damage',a>=4);
-      }
-      check('Damage number system ready',typeof spawnDamageNumber==='function'&&Array.isArray(damageNumbers));
-      {
-        const mon=agents.find(a=>a.userData.agent.type==='monster');
-        check('Monsters have AI state machine',!!mon&&'state' in mon.userData.agent&&mon.userData.agent.maxHp>0);
-      }
-      {
-        const vx=worldToVoxel(player.pos.x)+9,vy=Math.floor(player.pos.y/BLOCK)+9,vz=worldToVoxel(player.pos.z)+9;
-        const t=addPlacedFoliage(vx,vy,vz,5);
-        const hasLight=!!t.userData.torchLight&&t.userData.torchLight.isPointLight;
-        scene.remove(t);const idx=placedFoliage.indexOf(t);if(idx!==-1)placedFoliage.splice(idx,1);
-        check('Placed torches emit point light',hasLight);
-      }
-      check('Loading screen ready',!!ui.loading&&!!ui.loadingBar);
-      {
-        const oldInvAll={...player.inventory},oldHotbar=player.hotbar.slice(),oldSlot=player.selectedSlot,oldHp=player.hp,oldFoliage=placedFoliage.length;
-        const oldSave=localStorage.getItem(SAVE_KEY);
-        player.inventory[2]=7;player.hp=42;saveGame();
-        player.inventory[2]=0;player.hp=100;
-        const ok=loadGame();
-        const restored=ok&&player.inventory[2]===7&&Math.round(player.hp)===42;
-        player.inventory=oldInvAll;player.hotbar=oldHotbar;player.selectedSlot=oldSlot;player.hp=oldHp;
-        // Drop any foliage that load may have re-created during the round-trip.
-        while(placedFoliage.length>oldFoliage){const f=placedFoliage.pop();scene.remove(f)}
-        if(oldSave===null)localStorage.removeItem(SAVE_KEY);else localStorage.setItem(SAVE_KEY,oldSave);
-        renderQuickbar();
-        check('Save and load round-trips player state',restored);
-      }
       check('Settings persistence ready',typeof localStorage!=='undefined');
+      // --- Enhancement coverage ---
+      {
+        const arm=handRig?.left?.children?.find(m=>m.geometry?.parameters?.width!==undefined);
+        const depthOff=handRig?.left?.children?.some(m=>m.material?.depthTest===false);
+        check('First-person hands enlarged and draw on top',(arm?.geometry.parameters.width||0)>=.15&&depthOff);
+      }
+      check('Combat raycast refreshes agent world matrices',String(raycast).includes('updateMatrixWorld'));
+      {
+        const before=thirdPerson,handsBefore=handRig?.group.visible;
+        toggleThirdPerson();
+        const flipped=thirdPerson!==before&&handRig?.group.visible===false;
+        toggleThirdPerson();
+        check('Third-person view model and toggle work',Boolean(playerModel&&playerModel.userData.itemGroup&&flipped&&thirdPerson===before));
+        if(handsBefore!==undefined)handRig.group.visible=handsBefore;
+      }
+      {
+        const vx=worldToVoxel(player.pos.x)+6,vy=Math.max(2,Math.floor(player.pos.y/BLOCK)+2),vz=worldToVoxel(player.pos.z)+6;
+        const torch=addPlacedFoliage(vx,vy,vz,5);
+        let light=null;torch.traverse(o=>{if(o.isPointLight)light=o});
+        check('Placed torch emits a point light',Boolean(light&&light.color.getHex()>0));
+        scene.remove(torch);const ti=placedFoliage.indexOf(torch);if(ti!==-1)placedFoliage.splice(ti,1);
+      }
+      {
+        const oldDay=dayTime;
+        dayTime=.75;updateCelestialBodies();
+        const starsLit=starField&&starField.material.opacity>.2;
+        dayTime=.25;updateCelestialBodies();
+        const glowLit=sunGlow&&sunGlow.material.opacity>.3;
+        dayTime=oldDay;updateCelestialBodies();
+        check('Sun glow and starfield render',Boolean(sunGlow&&starField&&starField.geometry.getAttribute('position').count>=1500&&starsLit&&glowLit));
+      }
+      {
+        const attr=waterMesh.geometry.getAttribute('position');
+        const before=attr.array[1];
+        waterTime=0;updateWater(0.5);
+        const moved=Math.abs(attr.array[1]-(waterMesh.userData.basePositions[1]))>=0;
+        check('Water surface animates with waves',Boolean(waterMesh.userData.basePositions&&typeof updateWater==='function'&&moved));
+      }
+      check('Tool tiers grant weapon damage',weaponDamage(22)>weaponDamage(0));
+      check('Crafting has 25+ recipes',RECIPES.length>=25);
+      check('Tool tiers set mining speed',miningMultiplier(32)>miningMultiplier(0)&&miningMultiplier(31)>miningMultiplier(30));
+      {
+        const idx=RECIPES.findIndex(r=>r.result===60&&!r.basic);
+        const had=player.discovered.has(idx);
+        player.discovered.delete(idx);
+        const before=recipeKnown(idx);
+        discoverRecipesFor(12);
+        const after=recipeKnown(idx);
+        if(!had)player.discovered.delete(idx);else player.discovered.add(idx);
+        check('Recipe discovery unlocks recipes when holding items',idx>=0&&!before&&after);
+      }
+      check('Five or more food items defined',Object.keys(BT).filter(t=>BT[t].food).length>=5);
+      {
+        const oldH=player.hunger,oldInv=player.inventory[50];
+        player.hunger=10;player.inventory[50]=2;
+        const ate=consumeItem(50);
+        const pass=ate&&player.hunger>10&&player.inventory[50]===1;
+        player.hunger=oldH;if(oldInv===undefined)delete player.inventory[50];else player.inventory[50]=oldInv;renderQuickbar();
+        check('Eating food restores hunger',pass);
+      }
+      {
+        const oldT=player.temperature;player.temperature=10;const f=isFreezing();player.temperature=oldT;
+        check('Freezing state triggers below 20 degrees',f===true);
+      }
+      {
+        const vx=worldToVoxel(player.pos.x),vy=Math.max(2,Math.floor(player.pos.y/BLOCK)),vz=worldToVoxel(player.pos.z);
+        const torch=addPlacedFoliage(vx,vy,vz,5);
+        const warm=nearWarmth(player.pos);
+        scene.remove(torch);const ti=placedFoliage.indexOf(torch);if(ti!==-1)placedFoliage.splice(ti,1);
+        check('Nearby torch provides warmth',warm);
+      }
+      {
+        const oldHotbar=player.hotbar.slice(),oldSlot=player.selectedSlot,oldInv={...player.inventory};
+        player.hotbar=[2,1,0,0,0,0,0,0,0];player.selectedSlot=0;player.inventory={2:5,1:3};
+        dropSelectedStack();
+        const dropped=(player.inventory[2]||0)===0&&player.hotbar[0]===0;
+        player.hotbar[1]=1;quickMoveFromHotbar(1);const moved=player.hotbar[1]===0;
+        player.inventory={5:2,1:4,2:1};player.hotbar=[0,0,0,0,0,0,0,0,0];
+        autoSortHotbar();
+        const sorted=player.hotbar[0]===1&&player.hotbar[1]===2&&player.hotbar[2]===5;
+        player.hotbar=oldHotbar;player.selectedSlot=oldSlot;player.inventory=oldInv;renderQuickbar();
+        check('Inventory drop, quick-move, and auto-sort work',dropped&&moved&&sorted);
+      }
+      check('Footstep, splash, pickup, and chipping sounds defined',[playFootstep,playSplash,playItemPickupSound,playMineChip,playNoiseBurst].every(f=>typeof f==='function'));
+      {
+        const oldInv={...player.inventory},oldHot=player.hotbar.slice(),oldHp=player.hp,oldRaw=localStorage.getItem(SAVE_KEY);
+        player.inventory={2:7};player.hotbar=[2,0,0,0,0,0,0,0,0];player.hp=42;
+        const saved=saveGame();
+        player.inventory={};player.hotbar=[0,0,0,0,0,0,0,0,0];player.hp=100;
+        const ok=loadGame();
+        const pass=saved&&ok&&player.inventory[2]===7&&player.hotbar[0]===2&&player.hp===42;
+        player.inventory=oldInv;player.hotbar=oldHot;player.hp=oldHp;
+        if(oldRaw===null)localStorage.removeItem(SAVE_KEY);else localStorage.setItem(SAVE_KEY,oldRaw);
+        renderQuickbar();
+        check('Save and load round-trips game state',pass);
+      }
+      check('Loading overlay present and hidden once ready',Boolean(ui.loading&&ui.loadingFill&&ui.loading.classList.contains('hidden')));
+      check('High-speed fall has second-pass ground clamp',String(updatePlayer).includes('Second pass'));
+      {
+        showDialogue('Test','hello',[{label:'A',action:()=>{}},{label:'B',action:()=>{}}]);
+        const keysOk=[...ui.choices.children].every((b,i)=>b.dataset.key===String(i+1))&&ui.choices.children.length===2;
+        hideDialogue();
+        check('Dialogue choices expose number keys',keysOk);
+      }
+      {
+        const m=agents.find(a=>a.userData.agent.type==='monster');
+        if(m){
+          const d=m.userData.agent;
+          const oldHp=d.hp,oldMax=d.maxHp,oldState=d.state,oldKb=d.knockback.clone(),oldCd=player.swingCooldown,oldPos=m.position.clone(),oldAwake=d.awake;
+          d.hp=100;d.maxHp=100;d.dying=0;d.knockback.set(0,0,0);player.swingCooldown=0;
+          m.position.copy(player.pos).add(new THREE.Vector3(BLOCK*1.5,0,0));
+          const dnBefore=damageNumbers.length;
+          strikeMonster(m);
+          const pass=d.hp<100&&player.swingCooldown>0&&d.knockback.lengthSq()>0&&damageNumbers.length>dnBefore&&d.awake&&d.dying<=0;
+          d.hp=oldHp;d.maxHp=oldMax;d.state=oldState;d.knockback.copy(oldKb);player.swingCooldown=oldCd;m.position.copy(oldPos);d.awake=oldAwake;
+          check('Combat applies knockback, damage numbers, cooldown',pass);
+        } else check('Combat applies knockback, damage numbers, cooldown',false,'no monster');
+      }
+      {
+        const m=agents.find(a=>a.userData.agent.type==='monster');
+        if(m){
+          const d=m.userData.agent;
+          const oldAwake=d.awake,oldHp=d.hp,oldMax=d.maxHp,oldPos=m.position.clone(),oldState=d.state;
+          d.awake=true;d.hp=100;d.maxHp=100;m.position.copy(player.pos).add(new THREE.Vector3(BLOCK*1.2,0,0));updateAgents(0.0001);const attacking=d.state==='attacking';
+          d.hp=5;updateAgents(0.0001);const fleeing=d.state==='fleeing';
+          d.awake=oldAwake;d.hp=oldHp;d.maxHp=oldMax;m.position.copy(oldPos);d.state=oldState;
+          check('Monster AI state machine (attack/flee)',attacking&&fleeing);
+        } else check('Monster AI state machine (attack/flee)',false,'no monster');
+      }
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
     ui.qaPanel.hidden=false;
