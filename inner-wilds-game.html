@@ -136,7 +136,7 @@ canvas{display:block}
   <div class="crosshair" aria-hidden="true"></div>
   <div class="mine-meter glass" id="mineMeter" hidden><span id="mineFill"></span><b id="mineText">Mining</b></div>
   <div class="quickbar glass" id="quickbar"></div>
-  <div class="controls glass" id="controlsHint">WASD move. Shift sprint. Space jump/swim. Left-click hold to mine. Right-click place. E interact. F steady. C craft. M menu. [ / ] look speed. V view. 1-4 slots. Tab inventory.</div>
+  <div class="controls glass" id="controlsHint">WASD move. Shift sprint. Space jump/swim. Left-click mine/attack. Right-click place/eat. E interact. F steady. Q drop. C craft. M menu. [ / ] look speed. V view. 1-9 slots. Tab inventory.</div>
   <section class="notes glass" id="notes" role="dialog" aria-modal="true" aria-labelledby="notesTitle">
     <h2 id="notesTitle">Field Notes</h2>
     <p>You wake on a broken survey island. Restore the waystones, recover the lost chart, and learn why the Hollowlings were left to guard the ruins.</p>
@@ -177,9 +177,13 @@ canvas{display:block}
   </section>
   <section class="inventory-panel glass" id="inventoryPanel" role="dialog" aria-modal="true">
     <h2>Inventory</h2>
+    <p class="setting-help">Click a backpack item to move it to the hotbar. Shift-click a hotbar slot to stash it. Press Q in-game to drop the selected stack.</p>
     <div class="inventory-grid" id="inventoryGrid"></div>
     <div class="inventory-hotbar" id="inventoryHotbar"></div>
-    <button id="closeInventory">Close</button>
+    <div class="menu-actions">
+      <button id="sortInventory" class="secondary">Auto-sort</button>
+      <button id="closeInventory">Close</button>
+    </div>
   </section>
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
 </div>
@@ -1027,6 +1031,7 @@ const ui={
   recipeList:document.getElementById('recipeList'),closeCrafting:document.getElementById('closeCrafting'),
   inventoryPanel:document.getElementById('inventoryPanel'),inventoryGrid:document.getElementById('inventoryGrid'),
   inventoryHotbar:document.getElementById('inventoryHotbar'),closeInventory:document.getElementById('closeInventory'),
+  sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
 };
 
@@ -1356,7 +1361,11 @@ function renderInventory(){
     if(type>0&&count>0){
       div.innerHTML=slotHTML(type,count);
     }
-    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar();renderInventory()});
+    div.addEventListener('click',e=>{
+      // Shift-click stashes the item out of the hotbar into the backpack.
+      if(e.shiftKey&&type>0){player.hotbar[i]=0;renderQuickbar();renderInventory();return}
+      player.selectedSlot=i;renderQuickbar();renderInventory();
+    });
     ui.inventoryHotbar.appendChild(div);
   }
   
@@ -1373,6 +1382,7 @@ function renderInventory(){
 }
 
 function moveToHotbar(type){
+  if(player.hotbar.includes(type)){renderQuickbar();renderInventory();return}
   const emptySlot=player.hotbar.indexOf(0);
   if(emptySlot!==-1){
     player.hotbar[emptySlot]=type;
@@ -1381,6 +1391,29 @@ function moveToHotbar(type){
   }
   renderQuickbar();
   renderInventory();
+}
+
+// Auto-sort: pack owned items by type, hotbar first then backpack stays sorted on render.
+function autoSortInventory(){
+  const owned=Object.keys(player.inventory).filter(t=>t>0&&player.inventory[t]>0).map(Number).sort((a,b)=>a-b);
+  const newHotbar=[0,0,0,0,0,0,0,0,0];
+  for(let i=0;i<Math.min(9,owned.length);i++)newHotbar[i]=owned[i];
+  player.hotbar=newHotbar;
+  player.selectedSlot=0;
+  renderQuickbar();renderInventory();
+  toast('Inventory sorted');
+}
+
+// Drop the currently selected hotbar stack.
+function dropSelectedStack(){
+  const type=player.hotbar[player.selectedSlot];
+  if(!type||(player.inventory[type]||0)<=0){toast('Nothing to drop');return}
+  const count=player.inventory[type];
+  player.inventory[type]=0;
+  player.hotbar[player.selectedSlot]=0;
+  spawnParticle(camera.position.clone().add(new THREE.Vector3(0,-BLOCK*.3,0)),BT[type]?.color||0xf2c96d,10,2.4);
+  toast('Dropped '+count+'x '+(BT[type]?.name?.replace(/_/g,' ')||'item'));
+  renderQuickbar();renderInventory();
 }
 
 function toggleInventory(){
@@ -2163,6 +2196,7 @@ window.addEventListener('keydown',e=>{
   if(k===' '||k==='spacebar')tryJump();
   if(k==='c'){showCrafting=!showCrafting;ui.craftingPanel.classList.toggle('open',showCrafting);if(showCrafting){renderCrafting();exitGamePointerLock()}else if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()}
   if(k==='m')openMainMenu();
+  if(k==='q'&&state.started&&ui.start.classList.contains('hidden'))dropSelectedStack();
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
   if(k==='v'){}
@@ -2682,6 +2716,7 @@ ui.menuNotesBtn.addEventListener('click',()=>{ui.notes.classList.add('open');exi
 ui.closeNotes.addEventListener('click',()=>{ui.notes.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
 ui.closeCrafting.addEventListener('click',()=>{showCrafting=false;ui.craftingPanel.classList.remove('open');if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()});
 ui.closeInventory.addEventListener('click',()=>{ui.inventoryPanel.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
+ui.sortInventory.addEventListener('click',autoSortInventory);
 ui.sensitivitySlider.addEventListener('input',e=>setMouseSensitivity(e.target.value));
 ui.renderDistSlider.addEventListener('input',e=>{
   renderDistance=parseInt(e.target.value);
