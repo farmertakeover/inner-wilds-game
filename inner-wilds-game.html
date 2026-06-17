@@ -75,6 +75,8 @@ canvas{display:block}
 .menu-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
 .menu-actions button.secondary{color:var(--ink);background:rgba(255,255,255,.06);border-color:rgba(121,216,200,.4);box-shadow:none}
 .settings-panel{display:grid;gap:12px}
+/* The [hidden] attribute must win over the display rules above so menu panels actually toggle. */
+.settings-panel[hidden],#menuMain[hidden]{display:none}
 .setting-row{display:grid;gap:6px;color:var(--muted)}
 .setting-row strong{color:var(--ink)}
 .setting-head{display:flex;justify-content:space-between;gap:10px}
@@ -3848,6 +3850,12 @@ if(new URLSearchParams(location.search).has('test')){
         check('Buried player is lifted to the surface',buried&&recovered);
       }
       check('Menu offers New Game / Continue + autosave controls',Boolean(document.getElementById('newGameBtn')&&document.getElementById('continueBtn')&&document.getElementById('autosaveToggle')&&document.getElementById('manualSaveBtn'))&&typeof setAutosave==='function');
+      {
+        // Settings must not sit under the main menu — panels toggle exclusively.
+        showMenuPanel('settings');const s1=ui.menuMain.hidden&&!ui.menuSettings.hidden;
+        showMenuPanel('main');const s2=!ui.menuMain.hidden&&ui.menuSettings.hidden;
+        check('Menu panels toggle (settings not shown under main)',s1&&s2);
+      }
       check('Save guards against persisting underground',String(saveGame).includes('safeY'));
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
