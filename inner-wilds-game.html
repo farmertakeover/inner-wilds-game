@@ -1080,6 +1080,9 @@ const player={
   equippedWeapon:null,
   mining:null,
   primaryHeld:false,
+  swingCooldown:0,
+  wasInWater:false,
+  stepTimer:0,
   trusted:new Set(),
   talked:new Set(),
   waystones:new Set(),
@@ -1198,9 +1201,14 @@ function makeItemIconDataURL(type){
     // wings
     x.fillStyle='rgba(255,255,200,.5)';x.beginPath();x.ellipse(8,16,6,3,.2,0,Math.PI*2);x.fill();
     x.fillStyle='rgba(255,255,200,.5)';x.beginPath();x.ellipse(24,16,6,3,-.2,0,Math.PI*2);x.fill()
-  } else if(type===15||type===16||type===17||type===18||type===19){ // food/special
-    x.fillStyle='rgba(255,255,255,.2)';x.beginPath();x.arc(16,14,10,0,Math.PI*2);x.fill();
-    x.fillStyle='rgba(255,255,255,.3)';x.beginPath();x.arc(14,12,3,0,Math.PI*2);x.fill()
+  } else if(type>=31&&type<=36){ // tools (pickaxe/axe)
+    x.fillStyle='#8a6a3a';x.fillRect(14,8,4,22); // handle
+    x.fillStyle=col;
+    if(BT[type]?.tool==='pickaxe'){x.beginPath();x.moveTo(4,10);x.quadraticCurveTo(16,2,28,10);x.lineWidth=4;x.strokeStyle=col;x.stroke()}
+    else{x.fillRect(16,6,10,10)}
+  } else if(type===40||type===41||type===42||type===43||type===44||type===15||type===16||type===17||type===18||type===19){ // food/special
+    x.fillStyle=col;x.beginPath();x.arc(16,16,11,0,Math.PI*2);x.fill();
+    x.fillStyle='rgba(255,255,255,.3)';x.beginPath();x.arc(12,12,3,0,Math.PI*2);x.fill()
   } else { // default: blocks with 3D edge effect
     x.fillStyle='rgba(0,0,0,.15)';x.fillRect(0,0,12,32);
     x.fillStyle='rgba(255,255,255,.12)';x.fillRect(20,0,12,32);
@@ -1223,10 +1231,25 @@ function slotHTML(type,count){
 }
 
 function addToInventory(type,count=1){
+  const had=(player.inventory[type]||0)>0;
   player.inventory[type]=(player.inventory[type]||0)+count;
   if(!player.hotbar.includes(type)){
     const emptySlot=player.hotbar.indexOf(0);
     if(emptySlot!==-1)player.hotbar[emptySlot]=type;
+  }
+  if(!had&&count>0)discoverRecipesFor(type);
+  if(state.started)playPickup();
+}
+
+// Reveal recipes that use a newly acquired ingredient.
+function discoverRecipesFor(type){
+  if(typeof RECIPES==='undefined')return;
+  for(const r of RECIPES){
+    if(discoveredRecipes.has(r.name))continue;
+    if(r.ingredients[type]!==undefined){
+      discoveredRecipes.add(r.name);
+      if(state.started)toast('Recipe unlocked: '+r.name);
+    }
   }
 }
 
@@ -1265,18 +1288,7 @@ function updateMeters(){
 // ============================================================
 // CRAFTING
 // ============================================================
-const RECIPES=[
-  {name:'Planks x4',result:9,count:4,ingredients:{1:1},shapeless:true},
-  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true},
-  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,1:1},shapeless:false,pattern:[[9,0,0],[9,0,0],[1,0,0]]},
-  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,1:1},shapeless:false,pattern:[[10,0,0],[10,0,0],[1,0,0]]},
-  {name:'Iron Sword',result:22,count:1,ingredients:{12:2,1:1},shapeless:false,pattern:[[12,0,0],[12,0,0],[1,0,0]]},
-  {name:'Bow',result:23,count:1,ingredients:{9:3,1:2},shapeless:false,pattern:[[0,9,1],[9,1,9],[0,9,1]]},
-  {name:'Torch x4',result:24,count:4,ingredients:{1:1,9:1},shapeless:true},
-  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true},
-];
-
-// Extended block types for crafted items
+// Extended block/item types for crafted items, tools, and food
 BT[20]={name:'wooden_sword',color:0x8b6914,rough:.8,weapon:true,damage:4};
 BT[21]={name:'stone_sword',color:0x6a6f73,rough:.75,weapon:true,damage:6};
 BT[22]={name:'iron_sword',color:0xaaaacc,rough:.6,weapon:true,damage:8};
@@ -1284,7 +1296,62 @@ BT[23]={name:'bow',color:0x8b6914,rough:.8,weapon:true,ranged:true,damage:5};
 BT[24]={name:'torch',color:0xddaa44,rough:.9,light:true,glow:0x442200};
 BT[25]={name:'butterfly',color:0xdd88ff,rough:.7};
 BT[26]={name:'firefly',color:0xffee88,rough:.45,light:true,glow:0x554400};
+// Materials
+BT[30]={name:'stick',color:0x8b6914,rough:.9};
+BT[37]={name:'iron_ingot',color:0xd8d8e8,rough:.5,metalness:.6};
+BT[38]={name:'bowl',color:0x8a6a3a,rough:.85};
+BT[39]={name:'bottle',color:0x9fd6e0,rough:.3,transparent:true};
+// Tools (mineSpeed multiplies mining speed; tool category gives bonus vs matching blocks)
+BT[31]={name:'wooden_pickaxe',color:0x9b7a34,rough:.8,tool:'pickaxe',mineSpeed:1.5,damage:3};
+BT[32]={name:'stone_pickaxe',color:0x7a7f83,rough:.8,tool:'pickaxe',mineSpeed:2.5,damage:4};
+BT[33]={name:'iron_pickaxe',color:0xc8c8dc,rough:.6,tool:'pickaxe',mineSpeed:4,damage:5};
+BT[34]={name:'wooden_axe',color:0x9b7a34,rough:.8,tool:'axe',mineSpeed:1.4,damage:4};
+BT[35]={name:'stone_axe',color:0x7a7f83,rough:.8,tool:'axe',mineSpeed:2.2,damage:5};
+BT[36]={name:'iron_axe',color:0xc8c8dc,rough:.6,tool:'axe',mineSpeed:3.5,damage:6};
+// Food (food = hunger restored; heal = hp restored)
+BT[40]={name:'berries',color:0xc0395a,rough:.7,food:15};
+BT[41]={name:'mushroom',color:0xb06a4a,rough:.8,food:10};
+BT[42]={name:'bread',color:0xd6a44a,rough:.8,food:30};
+BT[43]={name:'stew',color:0xc98a4a,rough:.7,food:55,heal:12};
+BT[44]={name:'health_potion',color:0xff5577,rough:.4,heal:45,food:5};
+// Armor (armor = flat damage reduction while carried)
+BT[50]={name:'iron_helmet',color:0xc8c8dc,rough:.55,armor:2};
+BT[51]={name:'iron_chestplate',color:0xc8c8dc,rough:.55,armor:4};
+BT[52]={name:'iron_boots',color:0xc8c8dc,rough:.55,armor:1};
+// Decorative blocks
+BT[53]={name:'brick',color:0x9a4a3a,rough:.82,hardness:1.1};
+BT[54]={name:'amber_lamp',color:0xffcf6a,rough:.5,light:true,glow:0x553300,hardness:.8};
+
+const RECIPES=[
+  {name:'Planks x4',result:9,count:4,ingredients:{1:1},shapeless:true},
+  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true},
+  {name:'Sticks x4',result:30,count:4,ingredients:{9:1},shapeless:true},
+  {name:'Iron Ingot',result:37,count:1,ingredients:{12:1},shapeless:true},
+  {name:'Bowl',result:38,count:1,ingredients:{9:3},shapeless:true},
+  {name:'Bottle',result:39,count:1,ingredients:{4:2},shapeless:true},
+  {name:'Torch x4',result:24,count:4,ingredients:{30:1,1:1},shapeless:true},
+  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true},
+  {name:'Brick x4',result:53,count:4,ingredients:{10:2},shapeless:true},
+  {name:'Amber Lamp',result:54,count:1,ingredients:{3:1,24:1},shapeless:true},
+  {name:'Wooden Pickaxe',result:31,count:1,ingredients:{30:2,9:3},pattern:[[9,9,9],[0,30,0],[0,30,0]]},
+  {name:'Stone Pickaxe',result:32,count:1,ingredients:{30:2,10:3},pattern:[[10,10,10],[0,30,0],[0,30,0]]},
+  {name:'Iron Pickaxe',result:33,count:1,ingredients:{30:2,37:3},pattern:[[37,37,37],[0,30,0],[0,30,0]]},
+  {name:'Wooden Axe',result:34,count:1,ingredients:{30:2,9:3},pattern:[[9,9,0],[9,30,0],[0,30,0]]},
+  {name:'Stone Axe',result:35,count:1,ingredients:{30:2,10:3},pattern:[[10,10,0],[10,30,0],[0,30,0]]},
+  {name:'Iron Axe',result:36,count:1,ingredients:{30:2,37:3},pattern:[[37,37,0],[37,30,0],[0,30,0]]},
+  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,30:1},pattern:[[9,0,0],[9,0,0],[30,0,0]]},
+  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,30:1},pattern:[[10,0,0],[10,0,0],[30,0,0]]},
+  {name:'Iron Sword',result:22,count:1,ingredients:{37:2,30:1},pattern:[[37,0,0],[37,0,0],[30,0,0]]},
+  {name:'Bow',result:23,count:1,ingredients:{30:3,9:2},pattern:[[0,30,9],[30,0,9],[0,30,9]]},
+  {name:'Bread',result:42,count:1,ingredients:{40:3},shapeless:true},
+  {name:'Mushroom Stew',result:43,count:1,ingredients:{40:2,41:1,38:1},shapeless:true},
+  {name:'Health Potion',result:44,count:1,ingredients:{39:1,14:1},shapeless:true},
+  {name:'Iron Helmet',result:50,count:1,ingredients:{37:5},pattern:[[37,37,37],[37,0,37],[0,0,0]]},
+  {name:'Iron Chestplate',result:51,count:1,ingredients:{37:8},pattern:[[37,0,37],[37,37,37],[37,37,37]]},
+  {name:'Iron Boots',result:52,count:1,ingredients:{37:4},pattern:[[0,0,0],[37,0,37],[37,0,37]]},
+];
 let selectedRecipe=RECIPES[0];
+const discoveredRecipes=new Set();
 
 function recipeCells(recipe){
   const cells=Array(9).fill(0);
@@ -1942,14 +2009,35 @@ function updateWeather(dt){
 // ============================================================
 // SOUND (Web Audio API)
 // ============================================================
-let audioCtx=null, masterGain=null, musicVolume=.7, sfxVolume=.7;
+let audioCtx=null, masterGain=null, musicVolume=.7, sfxVolume=.7, noiseBuffer=null;
 
 function initAudio(){
   audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   masterGain=audioCtx.createGain();
   masterGain.gain.value=sfxVolume;
   masterGain.connect(audioCtx.destination);
+  // Pre-render a short white-noise buffer for filtered, organic SFX.
+  const len=audioCtx.sampleRate*.5;
+  noiseBuffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);
+  const data=noiseBuffer.getChannelData(0);
+  for(let i=0;i<len;i++)data[i]=Math.random()*2-1;
 }
+
+// Play a burst of filtered noise (footsteps, splashes, chipping).
+function playNoise(duration=.12,freq=600,vol=.12,q=1){
+  if(!audioCtx||!noiseBuffer)return;
+  const src=audioCtx.createBufferSource();src.buffer=noiseBuffer;
+  const filter=audioCtx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=freq;filter.Q.value=q;
+  const gain=audioCtx.createGain();gain.gain.value=vol;
+  gain.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+duration);
+  src.connect(filter);filter.connect(gain);gain.connect(masterGain);
+  src.start();src.stop(audioCtx.currentTime+duration);
+}
+function playFootstep(){playNoise(.09,180+Math.random()*60,.06,.8)}
+function playSplash(){playNoise(.28,900+Math.random()*300,.12,.6)}
+function playMineChip(){playNoise(.08,420+Math.random()*120,.1,1.4)}
+function playPickup(){playSound(620,.08,'sine',.09);setTimeout(()=>playSound(880,.08,'sine',.08),60)}
+function playEatSound(){playNoise(.16,260,.08,1);setTimeout(()=>playSound(440,.1,'sine',.07),120)}
 
 function setMusicVolume(v){
   musicVolume=THREE.MathUtils.clamp(v/100,0,1);
@@ -2228,7 +2316,21 @@ function hideInstance(mesh,instanceId){
   mesh.computeBoundingSphere?.();
 }
 
+// Mining speed depends on the held tool; axes favour wood, pickaxes favour stone.
+function toolMineSpeed(blockType){
+  const held=BT[player.hotbar[player.selectedSlot]];
+  if(!held||!held.mineSpeed)return 1;
+  let speed=held.mineSpeed;
+  const name=BT[blockType]?.name||'';
+  const isWood=/bark|planks|leaf/.test(name)||blockType===5||blockType===6||blockType===9;
+  const isStone=/stone|cobble|ore|brick/.test(name);
+  if(held.tool==='axe'&&!isWood)speed*=.6;
+  if(held.tool==='pickaxe'&&!isStone)speed*=.7;
+  return speed;
+}
+
 function startMining(){
+  if(player.swingCooldown>0)return;
   const hit=raycast(5);
   if(!hit)return;
   if(hit.foliage){
@@ -2304,7 +2406,7 @@ function startMining(){
   const blockType=hit.blockType;
   if(LIQUID_TYPES.has(String(blockType))){toast('Water flows around the tool. Swim, not mine.');return}
   const hardness=BT[blockType]?.hardness||1;
-  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness,blockType};
+  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness/toolMineSpeed(blockType),blockType};
   ui.mineMeter.hidden=true;
   updateBreakOverlay(player.mining.pos,0);
   triggerHandSwing(.7);
@@ -2321,8 +2423,15 @@ function updateMining(dt){
     setBlock(wx,wy,wz,0);
     spawnParticle(new THREE.Vector3((wx+.5)*BLOCK,(wy+.5)*BLOCK,(wz+.5)*BLOCK),BT[minedType]?.color||0xf2c96d,18,4);
     addToInventory(minedType);
+    // Foraging: moss yields mushrooms/berries, leaves yield berries.
+    if(minedType===1){
+      if(hashNoise(wx*1.3+wy,wz*1.7-wy)>.7)addToInventory(41);
+      else if(hashNoise(wx*2.1-wy,wz*0.9+wy)>.78)addToInventory(40);
+    } else if(minedType===6&&hashNoise(wx*1.7,wz*2.3)>.6){
+      addToInventory(40);
+    }
     player.noise=Math.min(100,player.noise+2+player.mining.duration);
-    playPlaceSound();
+    playMineChip();
     // Remove any placed foliage sprite at this position
     removePlacedFoliageAt(wx,wy,wz);
     player.mining=null;
@@ -2392,10 +2501,14 @@ function removePlacedFoliageAt(wx,wy,wz){
 }
 
 function placeSelected(){
+  const selType=player.hotbar[player.selectedSlot];
+  // Edible items are consumed on right-click instead of placed.
+  if(selType&&BT[selType]?.food&&(player.inventory[selType]||0)>0){eatFood(selType);return}
   const hit=raycast(5);
   if(!hit||!hit.face)return;
   const type=player.hotbar[player.selectedSlot];
   if(!type||(player.inventory[type]||0)<=0){toast('Nothing to place. Mine blocks first.');return}
+  if(BT[type]?.weapon||BT[type]?.tool){toast('A tool cannot be placed.');return}
   if(LIQUID_TYPES.has(String(hit.blockType))){toast('Need a solid face to place.');return}
   const placePos=hit.blockPos.clone();
   const face=hit.face;
@@ -2423,6 +2536,30 @@ function placeSelected(){
   playPlaceSound();
   renderQuickbar();
   completeQuest('shape');
+}
+
+function eatFood(type){
+  const bt=BT[type];
+  if(!bt)return;
+  player.hunger=Math.min(100,player.hunger+(bt.food||0));
+  if(bt.heal)player.hp=Math.min(100,player.hp+bt.heal);
+  player.inventory[type]--;
+  if(player.inventory[type]<=0){
+    const slot=player.hotbar.indexOf(type);
+    if(slot!==-1)player.hotbar[slot]=0;
+  }
+  playEatSound();
+  toast('Ate '+bt.name.replace(/_/g,' '));
+  renderQuickbar();
+  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
+}
+
+function playerArmor(){
+  let armor=0;
+  for(const t of Object.keys(player.inventory)){
+    if((player.inventory[t]||0)>0&&BT[t]?.armor)armor+=BT[t].armor;
+  }
+  return armor;
 }
 
 // ============================================================
@@ -2639,10 +2776,21 @@ function updatePlayer(dt){
   const sprint=keys.has('shift');
   const inWater=isPlayerInWater();
   if(jumpHeld()&&moving)tryJump(inWater);
+  if(player.swingCooldown>0)player.swingCooldown=Math.max(0,player.swingCooldown-dt);
+  // Water entry/exit splash.
+  if(inWater!==player.wasInWater){playSplash();player.wasInWater=inWater}
+  // Footsteps while grounded and moving (cadence scales with speed).
+  if(moving&&player.grounded&&!inWater){
+    player.stepTimer-=dt;
+    if(player.stepTimer<=0){playFootstep();player.stepTimer=sprint?.28:.42}
+  } else {
+    player.stepTimer=0;
+  }
   
    if(moving){
      move.normalize();
-     const speed=movementSpeed(inWater,sprint);
+     // Freezing (<20°) slows movement by 20%.
+     const speed=movementSpeed(inWater,sprint)*(player.temperature<20?.8:1);
      const dx=move.x*speed*dt,dz=move.z*speed*dt;
      const fromY=Math.max(player.pos.y,groundYAt(player.pos.x,player.pos.z));
      if((canStandAt(player.pos.x+dx,player.pos.z,fromY)||inWater) && !wouldHitCeiling(player.pos.x+dx,player.pos.z,player.pos.y))player.pos.x+=dx;
@@ -2718,17 +2866,33 @@ function updatePlayer(dt){
   player.pos.z=THREE.MathUtils.clamp(player.pos.z,-maxW,maxW);
 }
 
+// True when the player is within 3 blocks of a heat source (placed torch / amber lamp).
+function nearWarmthSource(){
+  const range=3*BLOCK;
+  for(const f of placedFoliage){
+    if(f.userData.placedType===5&&f.position.distanceTo(player.pos)<range)return true;
+  }
+  const pv=new THREE.Vector3(worldToVoxel(player.pos.x),Math.floor(player.pos.y/BLOCK),worldToVoxel(player.pos.z));
+  for(let dx=-1;dx<=1;dx++)for(let dy=0;dy<=2;dy++)for(let dz=-1;dz<=1;dz++){
+    if(getBlock(pv.x+dx,pv.y+dy,pv.z+dz)===54)return true;
+  }
+  return false;
+}
+
 function updateSurvival(dt){
   const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
   const sprint=moving&&keys.has('shift');
   const inWater=isPlayerInWater();
-  player.hunger=Math.max(0,player.hunger-dt*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
+  // Hunger drains ~3x faster than the original tuning so food matters.
+  player.hunger=Math.max(0,player.hunger-dt*3*(.025+(moving?.02:0)+(sprint?.055:0)+(inWater?.035:0)));
 
   const sunY=Math.sin(dayTime*Math.PI*2);
   const altitude=Math.max(0,(player.pos.y-BLOCK*12)/(MAX_Y*BLOCK));
   const weatherCold=weather.type==='mirrorRain'?12:weather.type==='softFog'?6:0;
   const targetTemp=THREE.MathUtils.clamp(88-(sunY<0?18:0)-(inWater?28:0)-altitude*18-weatherCold*weather.intensity,12,100);
   player.temperature+= (targetTemp-player.temperature)*dt*.045;
+  // Standing near a placed torch (or amber lamp) restores warmth quickly.
+  if(nearWarmthSource())player.temperature=Math.min(100,player.temperature+dt*15);
 
   if(player.hunger<=0)player.hp=Math.max(0,player.hp-dt*1.4);
   else if(player.hunger<18)player.resolve=Math.max(0,player.resolve-dt*.9);
