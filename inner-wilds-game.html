@@ -32,6 +32,7 @@ canvas{display:block}
 .dialogue .choices{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .dialogue button,.start button,.notes button,.crafting-panel button,.settings-panel button{border:1px solid rgba(242,201,109,.45);border-radius:999px;padding:8px 13px;color:#201408;background:linear-gradient(180deg,#ffe3a4,#d99750);box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .dialogue button:hover,.start button:hover,.notes button:hover{filter:brightness(1.1)}
+.dialogue button.pressed{filter:brightness(1.35);outline:2px solid var(--gold);transform:translateY(1px)}
 .banner{position:absolute;top:42%;left:50%;width:min(680px,calc(100vw - 24px));padding:16px 20px;transform:translate(-50%,-50%) scale(.96);border:1px solid rgba(242,201,109,.55);border-radius:6px 24px 6px 24px;background:linear-gradient(135deg,rgba(14,14,24,.94),rgba(42,24,62,.86));box-shadow:0 20px 80px rgba(0,0,0,.5),0 0 40px rgba(154,121,227,.25);opacity:0;text-align:center;transition:opacity .25s,transform .25s}
 .banner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 .banner h2{margin:0 0 6px;color:var(--gold);font-family:Georgia,serif;font-size:clamp(1.4rem,3.5vw,3rem)}
@@ -726,12 +727,12 @@ function hideBreakOverlay(){if(breakOverlay)breakOverlay.visible=false}
 
 function buildFirstPersonHands(){
   const group=new THREE.Group();group.visible=false;group.position.set(0,-.38,-.55);
-  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72});
-  const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a});
+  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72,depthTest:false});
+  const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a,depthTest:false});
   const addHand=side=>{
     const root=new THREE.Group();root.position.set(side*.22,.04,-.04);
-    const arm=new THREE.Mesh(new THREE.BoxGeometry(.10,.10,.30),sleeve);arm.position.set(0,.02,.02);arm.rotation.x=.55;arm.rotation.z=side*.08;root.add(arm);
-    const hand=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),skin);hand.position.set(0,-.02,-.06);hand.scale.set(1.0,.8,1.1);root.add(hand);
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(.16,.16,.30),sleeve);arm.position.set(0,.02,.02);arm.rotation.x=.55;arm.rotation.z=side*.08;arm.renderOrder=20;root.add(arm);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),skin);hand.position.set(0,-.02,-.08);hand.scale.set(1.0,.8,1.1);hand.renderOrder=20;root.add(hand);
     group.add(root);return root;
   };
   // Held item mesh (shown in right hand)
@@ -747,6 +748,46 @@ function buildFirstPersonHands(){
 }
 
 function triggerHandSwing(power=1){if(handRig)handRig.swing=Math.max(handRig.swing,.42*power)}
+
+// Third-person avatar (shown when V toggles thirdPerson)
+let playerModel=null,thirdPerson=false,playerModelWalk=0;
+function buildPlayerModel(){
+  const g=humanoid(0x4a6f8c,true);
+  // Held item lives in the right hand and mirrors the selected hotbar slot.
+  const itemGroup=new THREE.Group();
+  itemGroup.position.set(.78,1.62,.36);
+  const itemBox=new THREE.Mesh(new THREE.BoxGeometry(.5,.5,.5),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
+  itemGroup.add(itemBox);
+  g.add(itemGroup);
+  g.userData.itemGroup=itemGroup;g.userData.itemBox=itemBox;
+  g.visible=false;
+  scene.add(g);
+  playerModel=g;
+}
+function updatePlayerModel(dt,moving){
+  if(!playerModel)return;
+  playerModel.visible=thirdPerson&&state.started&&ui.start.classList.contains('hidden');
+  if(!playerModel.visible)return;
+  playerModel.position.set(player.pos.x,player.pos.y,player.pos.z);
+  playerModel.rotation.y=yaw+Math.PI;
+  playerModelWalk+=dt*(moving?9:0);
+  const stride=moving?Math.sin(playerModelWalk):0;
+  const ud=playerModel.userData;
+  if(ud.lArm)ud.lArm.rotation.x=-stride*.5;
+  if(ud.rArm)ud.rArm.rotation.x=stride*.5;
+  if(ud.lLeg)ud.lLeg.rotation.x=stride*.6;
+  if(ud.rLeg)ud.rLeg.rotation.x=-stride*.6;
+  // Mirror selected item onto the avatar's right hand.
+  const type=player.hotbar[player.selectedSlot];
+  const bt=BT[type];
+  if(type&&type>0&&(player.inventory[type]||0)>0&&bt){
+    ud.itemGroup.visible=true;
+    ud.itemBox.material.color.setHex(bt.color);
+    ud.itemBox.scale.setScalar(bt.weapon?.7:bt.transparent?.5:.8);
+  } else {
+    ud.itemGroup.visible=false;
+  }
+}
 
 function updateHandItem(){
   if(!handRig)return;
@@ -824,7 +865,7 @@ function updateHands(dt){
   const inGame=state.started&&ui.start.classList.contains('hidden');
   handRig.t+=dt*(mining?12:7);
   handRig.swing=Math.max(0,handRig.swing-dt*2.8);
-  handRig.group.visible=inGame;
+  handRig.group.visible=inGame&&!thirdPerson;
   if(!inGame){updateHandItem();return}
   const mineBeat=mining?Math.max(0,Math.sin(handRig.t))*.75:0;
   const strike=handRig.swing>0.02?Math.sin((1-handRig.swing/.42)*Math.PI):0;
@@ -1045,10 +1086,15 @@ function showDialogue(speaker,text,choices=[{label:'Continue',action:hideDialogu
     const c=choices[i];
     const b=document.createElement('button');
     b.textContent=(i+1)+'. '+c.label;
+    b.dataset.key=String(i+1);
     b.addEventListener('click',c.action);
     ui.choices.appendChild(b);
   }
   ui.dialogue.classList.add('show');
+}
+function flashDialogueChoice(idx){
+  const btn=ui.choices.querySelector(`button[data-key="${idx+1}"]`);
+  if(btn){btn.classList.add('pressed');setTimeout(()=>btn.classList.remove('pressed'),140)}
 }
 
 const iconCache={};
@@ -1977,7 +2023,7 @@ window.addEventListener('keydown',e=>{
   keys.add(k);
   if(k==='e'||k==='enter'){
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')&&currentDialogueChoices.length>0){
-      currentDialogueChoices[0].action();return;
+      flashDialogueChoice(0);currentDialogueChoices[0].action();return;
     }
     if(k==='e')interact();
   }
@@ -1987,13 +2033,13 @@ window.addEventListener('keydown',e=>{
   if(k==='m')openMainMenu();
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
-  if(k==='v'){}
+  if(k==='v'){thirdPerson=!thirdPerson;if(handRig)handRig.group.visible=!thirdPerson;toast(thirdPerson?'Third-person view':'First-person view')}
   if(k==='tab'){toggleInventory()}
   if(k>='1'&&k<='9'){
     // Dialogue choices take priority over hotbar when dialogue is open
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')){
       const idx=parseInt(k)-1;
-      if(idx<currentDialogueChoices.length){currentDialogueChoices[idx].action();return}
+      if(idx<currentDialogueChoices.length){flashDialogueChoice(idx);currentDialogueChoices[idx].action();return}
     }
     player.selectedSlot=parseInt(k)-1;renderQuickbar()
   }
@@ -2011,8 +2057,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   if(!showCrafting&&!ui.notes.classList.contains('open')&&ui.start.classList.contains('hidden'))requestGamePointerLock();
   if(e.button===0){
     player.primaryHeld=true;
-    // Check monster first
-    const hit=raycast(4);
+    // Combat reach is wider than mining reach so creatures hit reliably.
+    const hit=raycast(6);
     if(hit&&hit.agent){
       strikeMonster(hit.agent);return;
     }
@@ -2058,9 +2104,15 @@ const raycaster=new THREE.Raycaster();
 raycaster.far=20;
 
 function raycast(maxDist=5){
-  const dir=new THREE.Vector3(0,0,-1);
-  dir.applyQuaternion(camera.quaternion);
-  const origin=camera.position.clone();
+  let dir,origin;
+  if(thirdPerson){
+    // In third person the camera orbits the avatar, so aim from the player's eye along the look angle.
+    dir=new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
+    origin=new THREE.Vector3(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
+  } else {
+    dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+    origin=camera.position.clone();
+  }
   
   // DDA voxel raycast
   let x=Math.floor(origin.x/BLOCK),y=Math.floor(origin.y/BLOCK),z=Math.floor(origin.z/BLOCK);
@@ -2090,6 +2142,8 @@ function raycast(maxDist=5){
     const bflyHitMeshes=butterflyInstanced?.butterflyMeshes?.flatMap(b=>b.group.visible?[b.wingL,b.wingR]:[])||[];
     const foliageMeshes=[grassInstanced,flowerInstanced,...bflyHitMeshes,fireflyInstanced,...placedFoliage].filter(m=>m&&m.visible!==false);
     raycaster.set(origin,dir);raycaster.far=maxDist*BLOCK;
+    // Ensure agent child meshes have fresh world matrices before intersection.
+    scene.updateMatrixWorld(true);
     const agentHit=raycaster.intersectObjects(agentMeshes,false).find(h=>h.object.userData.agentRef);
     const foliageHit=raycaster.intersectObjects(foliageMeshes,false)[0];
     if(agentHit&&(!blockHit||agentHit.distance<blockHit.distance))return{object:agentHit.object,agent:agentHit.object.userData.agentRef,distance:agentHit.distance};
@@ -2243,6 +2297,11 @@ function addPlacedFoliage(wx,wy,wz,type){
     cross.rotation.y=Math.PI/2;
     mesh.add(cross);
     mesh.position.y+=BLOCK*.1;
+    // Warm light so placed torches actually illuminate at night.
+    const torchLight=new THREE.PointLight(0xff8833,1.6,BLOCK*7,1.6);
+    torchLight.position.set(0,BLOCK*.3,0);
+    mesh.add(torchLight);
+    mesh.userData.torchLight=torchLight;
   } else if(isBug){
     // Cross-plane for bugs so visible from any angle
     const cross=new THREE.Mesh(new THREE.PlaneGeometry(BLOCK*.4,BLOCK*.4),mat);
@@ -2569,6 +2628,11 @@ function updatePlayer(dt){
     } else {
       player.pos.y=newY;
     }
+    // Anti-tunnel second pass: at extreme fall speed, snap to the nearest ground below the old position.
+    if(player.velY<-20){
+      const groundBelow=floorYAt(player.pos.x,player.pos.z,oldY+BLOCK*.45);
+      if(groundBelow>0&&player.pos.y<groundBelow){player.pos.y=groundBelow;player.velY=0;player.grounded=true;coyoteTime=COYOTE_TIME_MAX}
+    }
     
     const ground=floorYAt(player.pos.x,player.pos.z,player.pos.y+BLOCK*.45);
     const ceiling=ceilingYAt(player.pos.x,player.pos.z,player.pos.y+.01);
@@ -2613,10 +2677,24 @@ function updateSurvival(dt){
 }
 
 function updateCamera(){
-  camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
-  camera.rotation.order='YXZ';
-  camera.rotation.y=yaw;
-  camera.rotation.x=pitch;
+  const eyeX=player.pos.x,eyeY=player.pos.y+PLAYER_EYE_HEIGHT,eyeZ=player.pos.z;
+  if(thirdPerson){
+    // Orbit behind and above the player, pulling in when terrain blocks the view.
+    const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+    const desired=Math.cos(pitch)*BLOCK*4.2;
+    let dist=desired;
+    for(let d=1;d<=desired;d+=BLOCK*.4){
+      const cx=eyeX-forward.x*d,cz=eyeZ-forward.z*d,cy=eyeY-Math.sin(pitch)*d+BLOCK*1.1;
+      if(getBlock(worldToVoxel(cx),worldToVoxel(cy),worldToVoxel(cz))){dist=Math.max(BLOCK,d-BLOCK*.4);break}
+    }
+    camera.position.set(eyeX-forward.x*dist,eyeY-Math.sin(pitch)*dist+BLOCK*1.1,eyeZ-forward.z*dist);
+    camera.lookAt(eyeX,eyeY,eyeZ);
+  } else {
+    camera.position.set(eyeX,eyeY,eyeZ);
+    camera.rotation.order='YXZ';
+    camera.rotation.y=yaw;
+    camera.rotation.x=pitch;
+  }
 }
 
 // ============================================================
@@ -2640,6 +2718,7 @@ function animate(){
     updateAgents(dt);
     updateParticles(dt);
     updateHands(dt);
+    updatePlayerModel(dt,keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright'));
     updateDayNight(dt);
     updateAmbient(dt);
     updateWeather(dt);
@@ -2688,6 +2767,7 @@ function init(){
   buildWeather();
   buildBreakOverlay();
   buildFirstPersonHands();
+  buildPlayerModel();
   buildCelestialBodies();
   
   // Place agents
