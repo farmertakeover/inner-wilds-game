@@ -628,7 +628,23 @@ function buildWaterMesh(){
   });
   waterMesh=new THREE.Mesh(geo,mat);
   waterMesh.userData.voxelWaterSurface=true;
+  waterMesh.userData.basePositions=Float32Array.from(positions);
   scene.add(waterMesh);
+}
+
+let waterTime=0;
+function updateWaterMesh(dt){
+  if(!waterMesh)return;
+  waterTime+=dt;
+  const attr=waterMesh.geometry.getAttribute('position');
+  const base=waterMesh.userData.basePositions;
+  if(!attr||!base)return;
+  for(let i=0;i<attr.count;i++){
+    const x=base[i*3],z=base[i*3+2];
+    const wave=Math.sin(x*0.3+waterTime*2)*0.05+Math.sin(z*0.4+waterTime*1.7)*0.04;
+    attr.setY(i,base[i*3+1]+wave*BLOCK);
+  }
+  attr.needsUpdate=true;
 }
 
 // ============================================================
@@ -726,12 +742,13 @@ function hideBreakOverlay(){if(breakOverlay)breakOverlay.visible=false}
 
 function buildFirstPersonHands(){
   const group=new THREE.Group();group.visible=false;group.position.set(0,-.38,-.55);
-  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72});
-  const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a});
+  group.renderOrder=20;
+  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72,depthTest:false});
+  const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a,depthTest:false});
   const addHand=side=>{
     const root=new THREE.Group();root.position.set(side*.22,.04,-.04);
-    const arm=new THREE.Mesh(new THREE.BoxGeometry(.10,.10,.30),sleeve);arm.position.set(0,.02,.02);arm.rotation.x=.55;arm.rotation.z=side*.08;root.add(arm);
-    const hand=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),skin);hand.position.set(0,-.02,-.06);hand.scale.set(1.0,.8,1.1);root.add(hand);
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(.16,.16,.30),sleeve);arm.position.set(0,.02,.02);arm.rotation.x=.55;arm.rotation.z=side*.08;arm.renderOrder=20;root.add(arm);
+    const hand=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),skin);hand.position.set(0,-.02,-.08);hand.scale.set(1.0,.8,1.1);hand.renderOrder=21;root.add(hand);
     group.add(root);return root;
   };
   // Held item mesh (shown in right hand)
@@ -852,7 +869,33 @@ const ambient=new THREE.AmbientLight(0x334455,0.4);
 scene.add(ambient);
 
 // Celestial bodies (Sun & Moon)
-let sunMesh=null, moonMesh=null, moon2Mesh=null;
+let sunMesh=null, moonMesh=null, moon2Mesh=null, sunGlow=null, starField=null;
+function makeGlowTexture(inner='rgba(255,238,170,1)',outer='rgba(255,170,60,0)'){
+  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+  const ctx=canvas.getContext('2d');
+  const grad=ctx.createRadialGradient(64,64,0,64,64,64);
+  grad.addColorStop(0,inner);grad.addColorStop(.35,'rgba(255,210,120,.55)');grad.addColorStop(1,outer);
+  ctx.fillStyle=grad;ctx.fillRect(0,0,128,128);
+  const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+}
+function buildStarField(){
+  const count=2000,positions=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    // distribute on a large sphere
+    const u=hashNoise(i*1.7,i*0.3),v=hashNoise(i*0.9,i*2.1);
+    const theta=u*Math.PI*2,phi=Math.acos(2*v-1);
+    const r=300;
+    positions[i*3]=r*Math.sin(phi)*Math.cos(theta);
+    positions[i*3+1]=Math.abs(r*Math.cos(phi))*.8+20; // bias above horizon
+    positions[i*3+2]=r*Math.sin(phi)*Math.sin(theta);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  const mat=new THREE.PointsMaterial({color:0xffffff,size:1.6,sizeAttenuation:true,transparent:true,opacity:0,depthWrite:false,fog:false});
+  starField=new THREE.Points(geo,mat);
+  starField.renderOrder=-11;
+  scene.add(starField);
+}
 function buildCelestialBodies(){
   // Sun
   const sunGeo=new THREE.SphereGeometry(15,32,32);
@@ -867,6 +910,14 @@ function buildCelestialBodies(){
   sunMesh=new THREE.Mesh(sunGeo,sunMat);
   sunMesh.renderOrder=-10;
   scene.add(sunMesh);
+  // Lens-flare style glow sprite parented to the sun
+  const glowMat=new THREE.SpriteMaterial({map:makeGlowTexture(),transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,fog:false});
+  sunGlow=new THREE.Sprite(glowMat);
+  sunGlow.scale.setScalar(70);
+  sunGlow.renderOrder=-11;
+  sunMesh.add(sunGlow);
+  // Starfield (only visible at night)
+  buildStarField();
   
   // Moon 1 - pale silver
   const moonGeo=new THREE.SphereGeometry(10,32,32);
@@ -925,6 +976,19 @@ function updateCelestialBodies(){
   const moon2X=Math.cos(moon2Angle);
   moon2Mesh.position.set(moon2X*sunDist, moon2Y*sunDist+180, 0);
   moon2Mesh.visible=true;
+  // Sun glow warms at sunrise/sunset, fades when below horizon
+  if(sunGlow){
+    sunGlow.material.opacity=THREE.MathUtils.clamp(.25+Math.max(0,sunY)*.7,0,.95);
+    const warm=sunY<.25;
+    sunGlow.material.color.setRGB(1,warm?.62:.85,warm?.35:.6);
+    sunGlow.scale.setScalar(THREE.MathUtils.lerp(48,84,Math.max(0,sunY)));
+  }
+  // Starfield brightens at night
+  if(starField){
+    const nightFactor=THREE.MathUtils.clamp(-sunY*1.4+.3,0,1);
+    starField.material.opacity=nightFactor>.3?(nightFactor-.3)/.7:0;
+    starField.visible=starField.material.opacity>0.01;
+  }
 }
 
 // Day/night state
@@ -939,10 +1003,13 @@ function updateDayNight(dt){
   sun.position.set(sunX*60,sunY*60+10,20);
   
   const dayFactor=Math.max(0,Math.min(1,sunY*2+0.3));
-  const skyR=THREE.MathUtils.lerp(0.02,0.45,dayFactor);
-  const skyG=THREE.MathUtils.lerp(0.02,0.65,dayFactor);
-  const skyB=THREE.MathUtils.lerp(0.04,0.85,dayFactor);
-  scene.background=new THREE.Color(skyR,skyG,skyB);
+  // Dawn/dusk warm band: strongest when the sun is near the horizon
+  const horizon=Math.max(0,1-Math.abs(sunY)*3.2);
+  const night=new THREE.Color(0.02,0.02,0.04);
+  const day=new THREE.Color(0.45,0.65,0.85);
+  const dusk=new THREE.Color(0.62,0.30,0.22);
+  const sky=night.clone().lerp(day,dayFactor).lerp(dusk,horizon*0.6);
+  scene.background=sky;
   scene.fog.color.set(scene.background);
   
   sun.intensity=THREE.MathUtils.lerp(0.1,1.8,dayFactor);
@@ -2243,6 +2310,11 @@ function addPlacedFoliage(wx,wy,wz,type){
     cross.rotation.y=Math.PI/2;
     mesh.add(cross);
     mesh.position.y+=BLOCK*.1;
+    // Emit warm light from the placed torch
+    const torchLight=new THREE.PointLight(0xff8833,1.1,BLOCK*8,1.6);
+    torchLight.position.set(0,BLOCK*.28,0);
+    mesh.add(torchLight);
+    mesh.userData.torchLight=torchLight;
   } else if(isBug){
     // Cross-plane for bugs so visible from any angle
     const cross=new THREE.Mesh(new THREE.PlaneGeometry(BLOCK*.4,BLOCK*.4),mat);
@@ -2641,6 +2713,7 @@ function animate(){
     updateParticles(dt);
     updateHands(dt);
     updateDayNight(dt);
+    updateWaterMesh(dt);
     updateAmbient(dt);
     updateWeather(dt);
     updateMusic(dt);
@@ -2652,6 +2725,7 @@ function animate(){
     rebuildVisibleChunks();
   } else {
     updateDayNight(dt);
+    updateWaterMesh(dt);
     updateAmbient(dt);
     updateWeather(dt);
     updateParticles(dt);
