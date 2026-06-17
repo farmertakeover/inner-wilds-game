@@ -752,6 +752,49 @@ function buildFirstPersonHands(){
 
 function triggerHandSwing(power=1){if(handRig)handRig.swing=Math.max(handRig.swing,.42*power)}
 
+// Third-person player model
+let playerModel=null,thirdPerson=false;
+function buildPlayerModel(){
+  const g=new THREE.Group();g.visible=false;
+  const cloth=new THREE.MeshStandardMaterial({color:0x4a6b86,roughness:.8});
+  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72});
+  const dark=new THREE.MeshStandardMaterial({color:0x2c3b4a,roughness:.85});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(BLOCK*.6,BLOCK*1.0,BLOCK*.34),cloth);body.position.y=BLOCK*1.7;g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(BLOCK*.34,12,10),skin);head.position.y=BLOCK*2.55;g.add(head);
+  const mkLimb=(w,h,mat)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,w),mat);
+  const lArm=mkLimb(BLOCK*.2,BLOCK*.9,cloth);lArm.position.set(-BLOCK*.42,BLOCK*1.7,0);g.add(lArm);
+  const rArm=mkLimb(BLOCK*.2,BLOCK*.9,cloth);rArm.position.set(BLOCK*.42,BLOCK*1.7,0);g.add(rArm);
+  const lLeg=mkLimb(BLOCK*.24,BLOCK*1.0,dark);lLeg.position.set(-BLOCK*.18,BLOCK*.55,0);g.add(lLeg);
+  const rLeg=mkLimb(BLOCK*.24,BLOCK*1.0,dark);rLeg.position.set(BLOCK*.18,BLOCK*.55,0);g.add(rLeg);
+  // Held item in right hand
+  const itemGroup=new THREE.Group();itemGroup.position.set(BLOCK*.42,BLOCK*1.35,BLOCK*.2);
+  const itemBox=new THREE.Mesh(new THREE.BoxGeometry(BLOCK*.28,BLOCK*.28,BLOCK*.28),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
+  itemGroup.add(itemBox);g.add(itemGroup);
+  scene.add(g);
+  playerModel={group:g,head,lArm,rArm,lLeg,rLeg,itemGroup,itemBox};
+}
+
+function updatePlayerModel(dt){
+  if(!playerModel)return;
+  const show=thirdPerson&&state.started&&ui.start.classList.contains('hidden');
+  playerModel.group.visible=show;
+  if(!show)return;
+  playerModel.group.position.set(player.pos.x,player.pos.y,player.pos.z);
+  playerModel.group.rotation.y=yaw+Math.PI;
+  // Walk bob
+  const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d');
+  const stride=moving?Math.sin(performance.now()*.01):0;
+  playerModel.lLeg.rotation.x=stride*.5;playerModel.rLeg.rotation.x=-stride*.5;
+  playerModel.lArm.rotation.x=-stride*.4;playerModel.rArm.rotation.x=stride*.4;
+  // Held item mirrors selected slot
+  const type=player.hotbar[player.selectedSlot];
+  if(type&&(player.inventory[type]||0)>0&&BT[type]){
+    playerModel.itemBox.visible=true;
+    playerModel.itemBox.material.color.setHex(BT[type].color||0x888888);
+    playerModel.itemBox.scale.setScalar(BT[type].weapon||BT[type].tool?.7:1);
+  } else playerModel.itemBox.visible=false;
+}
+
 function updateHandItem(){
   if(!handRig)return;
   const type=player.hotbar[player.selectedSlot];
@@ -828,8 +871,8 @@ function updateHands(dt){
   const inGame=state.started&&ui.start.classList.contains('hidden');
   handRig.t+=dt*(mining?12:7);
   handRig.swing=Math.max(0,handRig.swing-dt*2.8);
-  handRig.group.visible=inGame;
-  if(!inGame){updateHandItem();return}
+  handRig.group.visible=inGame&&!thirdPerson;
+  if(!inGame||thirdPerson){updateHandItem();return}
   const mineBeat=mining?Math.max(0,Math.sin(handRig.t))*.75:0;
   const strike=handRig.swing>0.02?Math.sin((1-handRig.swing/.42)*Math.PI):0;
   const hit=Math.max(mineBeat,strike);
@@ -2199,7 +2242,7 @@ window.addEventListener('keydown',e=>{
   if(k==='q'&&state.started&&ui.start.classList.contains('hidden'))dropSelectedStack();
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
-  if(k==='v'){}
+  if(k==='v'){thirdPerson=!thirdPerson;toast(thirdPerson?'Third-person view':'First-person view')}
   if(k==='tab'){toggleInventory()}
   if(k>='1'&&k<='9'){
     // Dialogue choices take priority over hotbar when dialogue is open
@@ -2957,10 +3000,25 @@ function updateSurvival(dt){
 }
 
 function updateCamera(){
-  camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
   camera.rotation.order='YXZ';
-  camera.rotation.y=yaw;
-  camera.rotation.x=pitch;
+  if(thirdPerson){
+    const eye=new THREE.Vector3(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
+    const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+    const dist=BLOCK*3.2,height=BLOCK*1.1;
+    // Pull camera back, but clamp out of any block it would clip into
+    let back=dist;
+    for(let s=dist;s>BLOCK*.5;s-=BLOCK*.4){
+      const px=eye.x-forward.x*s,py=eye.y+height-pitch*BLOCK*2,pz=eye.z-forward.z*s;
+      const b=getBlock(worldToVoxel(px),Math.floor(py/BLOCK),worldToVoxel(pz));
+      if(!b||LIQUID_TYPES.has(String(b))||BT[b]?.transparent){back=s;break}
+    }
+    camera.position.set(eye.x-forward.x*back,eye.y+height-pitch*BLOCK*2,eye.z-forward.z*back);
+    camera.lookAt(eye.x+forward.x*BLOCK,eye.y,eye.z+forward.z*BLOCK);
+  } else {
+    camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
+    camera.rotation.y=yaw;
+    camera.rotation.x=pitch;
+  }
 }
 
 // ============================================================
@@ -2985,6 +3043,7 @@ function animate(){
     updateParticles(dt);
     updateDamageNumbers(dt);
     updateHands(dt);
+    updatePlayerModel(dt);
     updateDayNight(dt);
     updateAmbient(dt);
     updateWeather(dt);
@@ -3033,6 +3092,7 @@ function init(){
   buildWeather();
   buildBreakOverlay();
   buildFirstPersonHands();
+  buildPlayerModel();
   buildCelestialBodies();
   
   // Place agents
