@@ -116,6 +116,8 @@ canvas{display:block}
 .loading-card p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
 .loading-bar{height:10px;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06)}
 .loading-bar span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 16px rgba(242,201,109,.4);transition:width .25s ease}
+.version-badge{position:absolute;right:12px;top:12px;padding:4px 9px;border-radius:8px;border:1px solid var(--line);background:rgba(8,11,18,.55);color:var(--muted);font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;pointer-events:none;z-index:6}
+.version-tag{margin:0 0 6px;color:var(--teal);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase}
 .qa-results{position:absolute;left:50%;bottom:80px;width:min(680px,calc(100vw - 24px));transform:translateX(-50%);padding:12px 14px;border-radius:12px;pointer-events:none;font-size:.85rem;line-height:1.4}
 .qa-results strong{color:var(--gold)}
 .qa-results .pass{color:#9ff3d6}
@@ -201,12 +203,14 @@ canvas{display:block}
     </div>
   </section>
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
+  <div class="version-badge" id="versionBadge"></div>
 </div>
 <div class="start" id="start">
   <section class="start-card glass">
     <div id="menuMain">
       <h3>Main Menu</h3>
       <h2>Inner Wilds</h2>
+      <p class="version-tag" id="menuVersion"></p>
       <p>Wake on a ruined survey island, restore its waystones, and rebuild the lost route before the dormant Hollowlings are forced awake.</p>
       <div class="start-grid">
         <div><strong>Lost Chart</strong><span>Find the Cartographer and restore waystones to piece together the island route.</span></div>
@@ -263,6 +267,8 @@ const WORLD_SEED = 27183;
 const BASE_MOUSE_SENS = 0.00165;
 const MAX_PARTICLES = 120;
 const TICK_RATE = 1/60;
+const GAME_VERSION = 'v0.4.0';
+const GAME_VERSION_NAME = 'Archipelago Update';
 
 const BLOCK_TYPES = {
   0:{name:'air',solid:false,transparent:true},
@@ -759,26 +765,39 @@ function updateBreakOverlay(pos,pct){
 
 function hideBreakOverlay(){if(breakOverlay)breakOverlay.visible=false}
 
+// Layer 1 is the first-person viewmodel overlay; it is rendered in a second
+// pass with a cleared depth buffer so the arms never show world geometry
+// (grass, flowers, butterflies, etc.) bleeding through them.
+const VIEWMODEL_LAYER=1;
+function setViewmodelLayer(obj){obj.traverse(o=>o.layers.set(VIEWMODEL_LAYER))}
 function buildFirstPersonHands(){
-  const group=new THREE.Group();group.visible=false;group.position.set(0,-.38,-.55);
-  // depthTest:false keeps the arms drawn on top of nearby world geometry so they never z-fight or clip away.
-  const skin=new THREE.MeshStandardMaterial({color:0xd9aa7a,roughness:.72,depthTest:false});
-  const sleeve=new THREE.MeshStandardMaterial({color:0x365c66,roughness:.82,emissive:0x03070a,depthTest:false});
+  const group=new THREE.Group();group.visible=false;group.position.set(0,-.46,-.5);
+  const skin=new THREE.MeshStandardMaterial({color:0xe0b48a,roughness:.7});
+  const skinShade=new THREE.MeshStandardMaterial({color:0xcf9f73,roughness:.74});
+  const sleeve=new THREE.MeshStandardMaterial({color:0x36606b,roughness:.82,emissive:0x06121a,emissiveIntensity:.5});
+  const cuff=new THREE.MeshStandardMaterial({color:0x274750,roughness:.8});
+  // A blocky, Minecraft/Hytale-style arm: upper sleeve, forearm, hand, thumb.
   const addHand=side=>{
-    const root=new THREE.Group();root.position.set(side*.22,.04,-.04);
-    const arm=new THREE.Mesh(new THREE.BoxGeometry(.16,.16,.30),sleeve);arm.position.set(0,.02,.02);arm.rotation.x=.55;arm.rotation.z=side*.08;arm.renderOrder=20;root.add(arm);
-    const hand=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),skin);hand.position.set(0,-.02,-.08);hand.scale.set(1.0,.8,1.1);hand.renderOrder=20;root.add(hand);
+    const root=new THREE.Group();root.position.set(side*.36,.02,0);root.rotation.z=side*.05;
+    const upper=new THREE.Mesh(new THREE.BoxGeometry(.17,.17,.34),sleeve);upper.position.set(0,.05,.06);upper.rotation.x=.62;root.add(upper);
+    const band=new THREE.Mesh(new THREE.BoxGeometry(.185,.06,.185),cuff);band.position.set(0,-.04,-.07);band.rotation.x=.62;root.add(band);
+    const fore=new THREE.Mesh(new THREE.BoxGeometry(.155,.155,.26),skin);fore.position.set(0,-.07,-.12);fore.rotation.x=.46;root.add(fore);
+    const hand=new THREE.Mesh(new THREE.BoxGeometry(.17,.12,.2),skin);hand.position.set(0,-.13,-.24);hand.rotation.x=.3;root.add(hand);
+    const thumb=new THREE.Mesh(new THREE.BoxGeometry(.05,.05,.1),skinShade);thumb.position.set(-side*.085,-.11,-.24);thumb.rotation.x=.3;root.add(thumb);
     group.add(root);return root;
   };
   // Held item mesh (shown in right hand)
-  const itemGroup=new THREE.Group();itemGroup.position.set(.14,-.01,-.12);itemGroup.rotation.x=.35;
+  const itemGroup=new THREE.Group();itemGroup.position.set(.18,-.06,-.18);itemGroup.rotation.x=.35;
   const itemBox=new THREE.Mesh(new THREE.BoxGeometry(BLOCK*.20,BLOCK*.20,BLOCK*.20),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
   itemGroup.add(itemBox);
   group.add(itemGroup);
   const torchLight=new THREE.PointLight(0xff8833,.8,12);
   torchLight.position.set(.2,-.05,-.2);
+  torchLight.layers.enable(VIEWMODEL_LAYER); // also illuminate the overlay hands
   group.add(torchLight);
   handRig={group,left:addHand(-1),right:addHand(1),swing:0,t:0,itemGroup,itemBox,torchLight};
+  setViewmodelLayer(group);
+  torchLight.layers.enable(0);torchLight.layers.enable(VIEWMODEL_LAYER);
   camera.add(group);
 }
 
@@ -847,6 +866,7 @@ function updateHandItem(){
       g.scale.setScalar(BLOCK*.5);
       handRig.itemGroup.add(g);
       handRig.torchMesh=g;
+      setViewmodelLayer(g);
     }
     handRig.torchMesh.visible=true;
     handRig.itemBox.visible=false;
@@ -864,6 +884,7 @@ function updateHandItem(){
       g.scale.setScalar(BLOCK*.45);
       handRig.itemGroup.add(g);
       handRig.swordMesh=g;
+      setViewmodelLayer(g);
     }
     handRig.swordMesh.visible=true;
     handRig.itemBox.visible=false;
@@ -880,6 +901,7 @@ function updateHandItem(){
       g.scale.setScalar(BLOCK*.5);
       handRig.itemGroup.add(g);
       handRig.bowMesh=g;
+      setViewmodelLayer(g);
     }
     handRig.bowMesh.visible=true;
     handRig.itemBox.visible=false;
@@ -909,12 +931,12 @@ function updateHands(dt){
   // Idle pose when not mining/swinging
   const idle=!mining&&handRig.swing<0.02;
   if(idle){handRig.t=0;handRig.swing=0}
-  handRig.right.position.set(.22+hit*.04,.04-hit*.06,-.04-hit*.18);
-  handRig.right.rotation.x=.55-hit*.7;handRig.right.rotation.z=.08-hit*.1;
-  handRig.left.position.set(-.22,.04+Math.sin(handRig.t*.4)*.008,-.04);
-  handRig.left.rotation.x=.55+hit*.1;handRig.left.rotation.z=-.08;
+  handRig.right.position.set(.36+hit*.03,.02-hit*.06,-hit*.2);
+  handRig.right.rotation.x=-hit*.6;handRig.right.rotation.z=.05-hit*.1;
+  handRig.left.position.set(-.36,.02+Math.sin(handRig.t*.4)*.01,0);
+  handRig.left.rotation.x=hit*.08;handRig.left.rotation.z=-.05;
   // Held item follows the right hand
-  handRig.itemGroup.position.set(.22+hit*.04+BLOCK*.06,.04-hit*.06+BLOCK*.08,-.04-hit*.18-BLOCK*.08);
+  handRig.itemGroup.position.set(.32+hit*.03,-.06-hit*.06+BLOCK*.05,-.18-hit*.2-BLOCK*.06);
   handRig.itemGroup.rotation.x=.35-hit*.7;
   updateHandItem();
 }
@@ -927,6 +949,10 @@ sun.position.set(40,60,20);
 scene.add(sun);
 const ambient=new THREE.AmbientLight(0x334455,0.4);
 scene.add(ambient);
+// Let world lights also illuminate the first-person viewmodel overlay (layer 1).
+hemi.layers.enable(VIEWMODEL_LAYER);
+sun.layers.enable(VIEWMODEL_LAYER);
+ambient.layers.enable(VIEWMODEL_LAYER);
 
 // Celestial bodies (Sun & Moon)
 let sunMesh=null, moonMesh=null, moon2Mesh=null, sunGlow=null, starField=null;
@@ -3100,7 +3126,26 @@ function animate(){
   }
   
   if(hudUpdateTimer>.1){updateMeters();hudUpdateTimer=0}
-  renderer.render(scene,camera);
+  renderFrame();
+}
+
+// Two-pass render: world first, then the first-person hands overlay on a
+// cleared depth buffer so nothing in the world can bleed through the arms.
+function renderFrame(){
+  const overlay=handRig&&handRig.group.visible&&!thirdPerson;
+  if(overlay){
+    camera.layers.set(0);
+    renderer.render(scene,camera);
+    renderer.autoClear=false;
+    renderer.clearDepth();
+    camera.layers.set(VIEWMODEL_LAYER);
+    renderer.render(scene,camera);
+    renderer.autoClear=true;
+  } else {
+    camera.layers.set(0);camera.layers.enable(VIEWMODEL_LAYER);
+    renderer.render(scene,camera);
+  }
+  camera.layers.set(0);camera.layers.enable(VIEWMODEL_LAYER);
 }
 
 // ============================================================
@@ -3159,6 +3204,10 @@ function loadGame(){
 // INIT
 // ============================================================
 function init(){
+  // Version labels
+  const verStr=GAME_VERSION+' · '+GAME_VERSION_NAME;
+  const vb=document.getElementById('versionBadge');if(vb)vb.textContent=GAME_VERSION;
+  const mv2=document.getElementById('menuVersion');if(mv2)mv2.textContent=verStr;
   // Load settings
   const sv=localStorage.getItem('iw_sens');
   if(sv)setMouseSensitivity(parseInt(sv));
@@ -3428,8 +3477,9 @@ if(new URLSearchParams(location.search).has('test')){
       // --- Enhancement coverage ---
       {
         const arm=handRig?.left?.children?.find(m=>m.geometry?.parameters?.width!==undefined);
-        const depthOff=handRig?.left?.children?.some(m=>m.material?.depthTest===false);
-        check('First-person hands enlarged and draw on top',(arm?.geometry.parameters.width||0)>=.15&&depthOff);
+        // Hands now draw on top via a dedicated viewmodel layer + overlay pass.
+        const onOverlayLayer=handRig?.left?.children?.every(m=>m.layers.isEnabled(VIEWMODEL_LAYER))&&handRig?.itemBox?.layers.isEnabled(VIEWMODEL_LAYER);
+        check('First-person hands enlarged and draw on top',(arm?.geometry.parameters.width||0)>=.15&&onOverlayLayer);
       }
       check('Combat raycast refreshes agent world matrices',String(raycast).includes('updateMatrixWorld'));
       {
