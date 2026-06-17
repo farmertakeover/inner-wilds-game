@@ -841,8 +841,8 @@ function updateHands(dt){
   const inGame=state.started&&ui.start.classList.contains('hidden');
   handRig.t+=dt*(mining?12:7);
   handRig.swing=Math.max(0,handRig.swing-dt*2.8);
-  handRig.group.visible=inGame;
-  if(!inGame){updateHandItem();return}
+  handRig.group.visible=inGame&&!thirdPerson;
+  if(!inGame||thirdPerson){updateHandItem();return}
   const mineBeat=mining?Math.max(0,Math.sin(handRig.t))*.75:0;
   const strike=handRig.swing>0.02?Math.sin((1-handRig.swing/.42)*Math.PI):0;
   const hit=Math.max(mineBeat,strike);
@@ -857,6 +857,48 @@ function updateHands(dt){
   handRig.itemGroup.position.set(.22+hit*.04+BLOCK*.06,.04-hit*.06+BLOCK*.08,-.04-hit*.18-BLOCK*.08);
   handRig.itemGroup.rotation.x=.35-hit*.7;
   updateHandItem();
+}
+
+// Third-person player model
+let thirdPerson=false, playerModel=null;
+function buildPlayerModel(){
+  playerModel=humanoid(0x4a7fb0,true);
+  playerModel.visible=false;
+  // Held item shown in the right hand
+  const itemGroup=new THREE.Group();
+  const itemBox=new THREE.Mesh(new THREE.BoxGeometry(.5,.5,.5),new THREE.MeshStandardMaterial({color:0x888888,roughness:.7}));
+  itemGroup.add(itemBox);
+  itemGroup.position.set(.95,2.1,.55);
+  playerModel.add(itemGroup);
+  playerModel.userData.itemGroup=itemGroup;
+  playerModel.userData.itemBox=itemBox;
+  // Model is ~3.6 tall in its own units; scale to roughly player height
+  playerModel.scale.setScalar(PLAYER_HEIGHT/3.9);
+  scene.add(playerModel);
+}
+function updatePlayerModelItem(){
+  if(!playerModel)return;
+  const type=player.hotbar[player.selectedSlot];
+  const ig=playerModel.userData.itemGroup,ib=playerModel.userData.itemBox;
+  if(!type||type===0||(player.inventory[type]||0)<=0||!BT[type]){ig.visible=false;return}
+  ig.visible=true;ib.material.color.setHex(BT[type].color);
+}
+function updatePlayerModel(dt){
+  if(!playerModel)return;
+  playerModel.visible=thirdPerson;
+  if(!thirdPerson)return;
+  playerModel.position.set(player.pos.x,player.pos.y,player.pos.z);
+  playerModel.rotation.y=yaw+Math.PI;
+  // Simple walk animation when moving
+  const moving=keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright');
+  const t=performance.now()*0.008;
+  const stride=moving?Math.sin(t)*.5:0;
+  const ud=playerModel.userData;
+  if(ud.lArm)ud.lArm.rotation.x=-stride;
+  if(ud.rArm)ud.rArm.rotation.x=stride;
+  if(ud.lLeg)ud.lLeg.rotation.x=stride;
+  if(ud.rLeg)ud.rLeg.rotation.x=-stride;
+  updatePlayerModelItem();
 }
 
 // Lighting
@@ -2054,7 +2096,7 @@ window.addEventListener('keydown',e=>{
   if(k==='m')openMainMenu();
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
-  if(k==='v'){}
+  if(k==='v'){thirdPerson=!thirdPerson;toast(thirdPerson?'Third-person view':'First-person view')}
   if(k==='tab'){toggleInventory()}
   if(k>='1'&&k<='9'){
     // Dialogue choices take priority over hotbar when dialogue is open
@@ -2078,8 +2120,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   if(!showCrafting&&!ui.notes.classList.contains('open')&&ui.start.classList.contains('hidden'))requestGamePointerLock();
   if(e.button===0){
     player.primaryHeld=true;
-    // Check monster first
-    const hit=raycast(4);
+    // Check creatures first, with a wider reach for combat
+    const hit=raycast(6);
     if(hit&&hit.agent){
       strikeMonster(hit.agent);return;
     }
@@ -2157,6 +2199,8 @@ function raycast(maxDist=5){
     const bflyHitMeshes=butterflyInstanced?.butterflyMeshes?.flatMap(b=>b.group.visible?[b.wingL,b.wingR]:[])||[];
     const foliageMeshes=[grassInstanced,flowerInstanced,...bflyHitMeshes,fireflyInstanced,...placedFoliage].filter(m=>m&&m.visible!==false);
     raycaster.set(origin,dir);raycaster.far=maxDist*BLOCK;
+    // Ensure agent child meshes have up-to-date world matrices before intersecting
+    scene.updateMatrixWorld(true);
     const agentHit=raycaster.intersectObjects(agentMeshes,false).find(h=>h.object.userData.agentRef);
     const foliageHit=raycaster.intersectObjects(foliageMeshes,false)[0];
     if(agentHit&&(!blockHit||agentHit.distance<blockHit.distance))return{object:agentHit.object,agent:agentHit.object.userData.agentRef,distance:agentHit.distance};
@@ -2685,10 +2729,24 @@ function updateSurvival(dt){
 }
 
 function updateCamera(){
-  camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
   camera.rotation.order='YXZ';
-  camera.rotation.y=yaw;
-  camera.rotation.x=pitch;
+  if(thirdPerson){
+    const eye=new THREE.Vector3(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
+    // Direction the player is looking
+    const dir=new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
+    const dist=BLOCK*3.2;
+    // Pull the camera back along the view direction, but don't clip into terrain
+    let cam=eye.clone().addScaledVector(dir,-dist);
+    cam.y+=BLOCK*.6;
+    const floor=floorYAt(cam.x,cam.z,cam.y+BLOCK)+BLOCK*.4;
+    if(cam.y<floor)cam.y=floor;
+    camera.position.copy(cam);
+    camera.lookAt(eye);
+  } else {
+    camera.position.set(player.pos.x,player.pos.y+PLAYER_EYE_HEIGHT,player.pos.z);
+    camera.rotation.y=yaw;
+    camera.rotation.x=pitch;
+  }
 }
 
 // ============================================================
@@ -2712,6 +2770,7 @@ function animate(){
     updateAgents(dt);
     updateParticles(dt);
     updateHands(dt);
+    updatePlayerModel(dt);
     updateDayNight(dt);
     updateWaterMesh(dt);
     updateAmbient(dt);
@@ -2762,6 +2821,7 @@ function init(){
   buildWeather();
   buildBreakOverlay();
   buildFirstPersonHands();
+  buildPlayerModel();
   buildCelestialBodies();
   
   // Place agents
