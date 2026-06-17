@@ -26,6 +26,8 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | Tab | Toggle inventory |
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
+| Q | Drop held stack |
+| Right-click (food) | Eat/drink the selected consumable |
 | M | Main menu |
 | V | Toggle 1st/3rd person |
 | Enter | Advance dialogue |
@@ -343,6 +345,30 @@ Recover the Island Chart from the Cartographer by restoring the waystones. Decid
 - **Creature damage**: Removed type==='monster' restriction, all agents hittable
 - **Firefly illumination**: Increased to 4.5 intensity, range 16
 - **Arm redesign**: Bottom corners, smaller, pointing upward, depthTest removed
+
+### Session 3 (Enhancement Prompt Pass)
+Worked through the "Priority Issues to Fix" list from the enhancement prompt. Self-test suite grown from 61 to 74 checks, all passing, with a clean automated playthrough (0 page errors).
+
+- **#1 Hands** — enlarged arms (0.16) and hands (0.12), `depthTest:false` + `renderOrder` so they never z-fight the world
+- **#2 Third person** — `buildPlayerModel()` humanoid, `V` toggles `thirdPerson`; camera pulls behind/above and looks at the player, hands hidden, model holds the selected item and walk-animates
+- **#3 Combat raycast** — `scene.updateMatrixWorld(true)` before agent intersection, widened combat reach to 6 voxels
+- **#4 Torch light** — placed torches (`addPlacedFoliage`) now parent a warm `PointLight`
+- **#5 Celestial** — additive sun glow Sprite + 2000-point starfield that fades in at night
+- **#6 Sky** — dawn/day/dusk/night color ramp lerped into `scene.background`/fog
+- **#7 Water** — sin-based vertex wave animation via `updateWaterMesh()` (base positions cached)
+- **#9 Combat depth** — `player.swingCooldown` (blocks mining mid-swing), knockback impulse, floating damage-number sprites, monster death scale tween + particle burst
+- **#10 Survival** — hunger drains ~3× faster, freezing (<20°) slows movement 20%, placed torches radiate warmth, edible food/potions
+- **#11 Crafting** — expanded to 27 recipes (tools, weapons, food, potions, armor, materials) with first-time recipe-discovery toasts
+- **#12 Inventory** — `Q` drops the held stack, Shift+click moves items between bag/hotbar, Auto-Sort button, hotbar stack counts
+- **#13 Tool tiers** — `miningMultiplier()` (hand 1× → iron pickaxe 4×) and per-tool combat damage
+- **#14 Sound** — footsteps (filtered noise), water-entry splash, pickup chime, gentle mining chip
+- **#15 Monster AI** — IDLE → CHASING → ATTACKING → FLEEING state machine; flees under 30% HP, contact damage reduced by worn armor
+- **#17 Save/Load** — full state (inventory, hotbar, meters, quests, placed foliage, pos, time) to localStorage, autosave every 30s + on unload, restored on init
+- **#18 Loading screen** — progress overlay driven through the async init sequence
+- **#19 Tunneling** — extra downward floor clamp when falling faster than 20 u/s
+- **#20 Dialogue** — choice buttons carry `data-key` and flash when the matching number key is pressed
+
+Already-satisfied items confirmed in place: #8 crosshair, #16 chunk-boundary-gated rebuild.
 
 ---
 

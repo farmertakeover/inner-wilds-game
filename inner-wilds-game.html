@@ -3414,6 +3414,54 @@ if(new URLSearchParams(location.search).has('test')){
       }
       check('Music no longer uses oscillator composition',!String(initMusic).includes('createOscillator')&&!String(updateMusic).includes('playSound('));
       check('Settings persistence ready',typeof localStorage!=='undefined');
+      // ---- New enhancement tests (README priority items) ----
+      check('Third-person player model ready',!!playerModel&&typeof thirdPerson==='boolean');
+      {
+        const vx=worldToVoxel(player.pos.x)+6,vy=Math.max(2,Math.floor(player.pos.y/BLOCK)),vz=worldToVoxel(player.pos.z)+6;
+        const m=addPlacedFoliage(vx,vy,vz,5);
+        const hasLight=!!m.userData.torchLight&&m.userData.torchLight.isPointLight;
+        scene.remove(m);placedFoliage.pop();
+        check('Placed torch emits point light',hasLight);
+      }
+      check('Sun glow and starfield exist',!!sunGlow&&!!starField&&starField.geometry.getAttribute('position').count>=1500);
+      check('Water animates with vertex waves',!!waterMesh?.userData.basePositions&&typeof updateWaterMesh==='function');
+      {
+        const oldHot=player.hotbar.slice(),oldSlot=player.selectedSlot,oldInv=player.inventory[29];
+        player.hotbar=[29,0,0,0,0,0,0,0,0];player.selectedSlot=0;player.inventory[29]=1;
+        const mult=miningMultiplier();
+        player.hotbar=oldHot;player.selectedSlot=oldSlot;if(oldInv===undefined)delete player.inventory[29];else player.inventory[29]=oldInv;
+        check('Tool tiers speed up mining',mult===4);
+      }
+      {
+        const oldInv=player.inventory[39],oldHot=player.hotbar.slice(),oldSlot=player.selectedSlot,oldHunger=player.hunger;
+        player.hotbar=[39,0,0,0,0,0,0,0,0];player.selectedSlot=0;player.inventory[39]=1;player.hunger=50;
+        const ate=consumeSelected(),gained=player.hunger>50;
+        if(oldInv===undefined)delete player.inventory[39];else player.inventory[39]=oldInv;
+        player.hotbar=oldHot;player.selectedSlot=oldSlot;player.hunger=oldHunger;renderQuickbar();
+        check('Food restores hunger',ate&&gained);
+      }
+      check('Crafting offers 25+ recipes',RECIPES.length>=25,'recipes='+RECIPES.length);
+      check('Inventory has drop and auto-sort',typeof dropSelected==='function'&&typeof autoSortInventory==='function');
+      {
+        const oldInv={...player.inventory},oldHp=player.hp,oldPos=player.pos.clone(),oldFol=placedFoliage.slice();
+        player.inventory={...oldInv,2:7};player.hp=63;saveGame();
+        player.inventory={...oldInv,2:0};player.hp=10;
+        const ok=loadGame();
+        const restored=player.inventory[2]===7&&Math.round(player.hp)===63;
+        player.inventory=oldInv;player.hp=oldHp;player.pos.copy(oldPos);
+        for(const f of placedFoliage.slice())if(!oldFol.includes(f))scene.remove(f);
+        placedFoliage.length=0;oldFol.forEach(f=>placedFoliage.push(f));
+        try{localStorage.removeItem(SAVE_KEY)}catch(e){}
+        renderQuickbar();updateMeters();
+        check('Save and load restores progress',ok&&restored);
+      }
+      check('Combat has knockback, damage numbers, death tween','swingCooldown' in player&&typeof spawnDamageNumber==='function'&&typeof killAgent==='function'&&Array.isArray(dyingAgents));
+      {
+        const mon=agents.find(a=>a.userData.agent.type==='monster');
+        check('Monster AI uses a state machine',!!mon&&'state' in mon.userData.agent&&String(updateAgents).includes('fleeing'));
+      }
+      check('Loading screen present',!!ui.loadingOverlay&&!!ui.loadingFill&&typeof setLoadingProgress==='function');
+      check('Dialogue choices expose data-key',(()=>{showDialogue('T','t',[{label:'A',action:hideDialogue},{label:'B',action:hideDialogue}]);const ok=ui.choices.querySelector('button[data-key="1"]')&&ui.choices.querySelector('button[data-key="2"]');hideDialogue();return !!ok})());
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
     ui.qaPanel.hidden=false;
