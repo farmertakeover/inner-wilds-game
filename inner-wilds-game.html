@@ -114,6 +114,12 @@ canvas{display:block}
 .qa-results .pass{color:#9ff3d6}
 .qa-results .fail{color:#ff9dae}
 .weapon-display{position:absolute;right:20px;bottom:80px;pointer-events:none}
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,rgba(20,28,44,.96),rgba(6,8,14,.99));z-index:30;transition:opacity .45s}
+.loading.hidden{opacity:0;pointer-events:none;visibility:hidden}
+.loading h2{color:var(--gold);font-family:Georgia,serif;font-size:clamp(1.6rem,4vw,2.6rem);margin-bottom:16px;text-align:center}
+.loading .barwrap{width:min(360px,70vw);height:12px;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.06)}
+.loading .barwrap span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 16px rgba(242,201,109,.4);transition:width .25s}
+.loading p{margin-top:10px;color:var(--muted);font-size:.85rem;text-align:center}
 @media(max-width:860px){.top{grid-template-columns:1fr}.journal{top:auto;bottom:80px}.start-grid{grid-template-columns:1fr}.controls{display:none}.crafting-body{grid-template-columns:1fr}.crafting-grid{grid-template-columns:repeat(3,1fr)}.crafting-grid .slot{width:100%}}
 @media(max-width:600px){.brand p,.journal{display:none}}
 </style>
@@ -178,9 +184,10 @@ canvas{display:block}
   </section>
   <section class="inventory-panel glass" id="inventoryPanel" role="dialog" aria-modal="true">
     <h2>Inventory</h2>
+    <p class="setting-help">Shift-click moves a stack between bag and hotbar. Press Q in-game to drop the held stack.</p>
     <div class="inventory-grid" id="inventoryGrid"></div>
     <div class="inventory-hotbar" id="inventoryHotbar"></div>
-    <button id="closeInventory">Close</button>
+    <div class="menu-actions"><button id="sortInventory">Auto-sort</button><button class="secondary" id="closeInventory">Close</button></div>
   </section>
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
 </div>
@@ -229,6 +236,7 @@ canvas{display:block}
   </section>
 </div>
 <div class="qa-results" id="qaPanel" hidden></div>
+<div class="loading" id="loading"><div><h2>Inner Wilds</h2><div class="barwrap"><span id="loadingBar"></span></div><p id="loadingText">Shaping the island&hellip;</p></div></div>
 
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
@@ -1129,8 +1137,11 @@ const ui={
   recipeList:document.getElementById('recipeList'),closeCrafting:document.getElementById('closeCrafting'),
   inventoryPanel:document.getElementById('inventoryPanel'),inventoryGrid:document.getElementById('inventoryGrid'),
   inventoryHotbar:document.getElementById('inventoryHotbar'),closeInventory:document.getElementById('closeInventory'),
+  sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
+  loading:document.getElementById('loading'),loadingBar:document.getElementById('loadingBar'),loadingText:document.getElementById('loadingText'),
 };
+function setLoadingProgress(pct,text){if(ui.loadingBar)ui.loadingBar.style.width=pct+'%';if(text&&ui.loadingText)ui.loadingText.textContent=text}
 
 function toast(text){
   const el=document.createElement('div');el.className='toast';el.textContent=text;
@@ -1448,7 +1459,11 @@ function renderInventory(){
     if(type>0&&count>0){
       div.innerHTML=slotHTML(type,count);
     }
-    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar();renderInventory()});
+    div.addEventListener('click',e=>{
+      // Shift-click removes the stack from the hotbar back into the bag.
+      if(e.shiftKey&&type>0){player.hotbar[i]=0;renderQuickbar();renderInventory();return}
+      player.selectedSlot=i;renderQuickbar();renderInventory();
+    });
     ui.inventoryHotbar.appendChild(div);
   }
   
@@ -1462,6 +1477,29 @@ function renderInventory(){
     div.addEventListener('click',()=>{moveToHotbar(type)});
     ui.inventoryGrid.appendChild(div);
   }
+}
+
+function sortInventory(){
+  // Compact the hotbar and order entries by item id for a tidy bag.
+  const types=Object.keys(player.inventory).filter(t=>player.inventory[t]>0).map(Number).sort((a,b)=>a-b);
+  player.hotbar=[0,0,0,0,0,0,0,0,0];
+  for(let i=0;i<Math.min(9,types.length);i++)player.hotbar[i]=types[i];
+  player.selectedSlot=0;
+  renderQuickbar();renderInventory();
+  toast('Inventory sorted');
+}
+
+function dropSelectedStack(){
+  const i=player.selectedSlot,type=player.hotbar[i];
+  if(!type||(player.inventory[type]||0)<=0){toast('Nothing to drop');return}
+  const count=player.inventory[type];
+  player.inventory[type]=0;
+  player.hotbar[i]=0;
+  const eye=new THREE.Vector3(player.pos.x,player.pos.y+BLOCK,player.pos.z);
+  spawnParticle(eye,BT[type]?.color||0xf2c96d,10,3);
+  toast('Dropped '+count+'x '+(BT[type]?.name||'item').replace(/_/g,' '));
+  renderQuickbar();
+  if(ui.inventoryPanel.classList.contains('open'))renderInventory();
 }
 
 function moveToHotbar(type){
@@ -2221,6 +2259,7 @@ window.addEventListener('keydown',e=>{
   if(k==='m')openMainMenu();
   if(k==='[')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100-5));
   if(k===']')setMouseSensitivity(Math.round((mouseSensitivity/BASE_MOUSE_SENS)*100+5));
+  if(k==='q'&&state.started&&ui.start.classList.contains('hidden'))dropSelectedStack();
   if(k==='v'){thirdPerson=!thirdPerson;if(handRig)handRig.group.visible=!thirdPerson;toast(thirdPerson?'Third-person view':'First-person view')}
   if(k==='tab'){toggleInventory()}
   if(k>='1'&&k<='9'){
@@ -2727,6 +2766,7 @@ ui.menuNotesBtn.addEventListener('click',()=>{ui.notes.classList.add('open');exi
 ui.closeNotes.addEventListener('click',()=>{ui.notes.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
 ui.closeCrafting.addEventListener('click',()=>{showCrafting=false;ui.craftingPanel.classList.remove('open');if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()});
 ui.closeInventory.addEventListener('click',()=>{ui.inventoryPanel.classList.remove('open');if(state.started&&!showCrafting)requestGamePointerLock()});
+ui.sortInventory.addEventListener('click',sortInventory);
 ui.sensitivitySlider.addEventListener('input',e=>setMouseSensitivity(e.target.value));
 ui.renderDistSlider.addEventListener('input',e=>{
   renderDistance=parseInt(e.target.value);
@@ -3041,6 +3081,47 @@ function animate(){
 }
 
 // ============================================================
+// SAVE / LOAD
+// ============================================================
+const SAVE_KEY='iw_save_v1';
+function saveGame(){
+  try{
+    const data={
+      pos:[player.pos.x,player.pos.y,player.pos.z],
+      inventory:player.inventory,
+      hotbar:player.hotbar,
+      selectedSlot:player.selectedSlot,
+      hp:player.hp,hunger:player.hunger,temperature:player.temperature,resolve:player.resolve,
+      monstersRepelled:player.monstersRepelled,
+      dayTime,
+      quests:quests.map(q=>({id:q.id,progress:q.progress})),
+      foliage:placedFoliage.map(f=>({p:[f.userData.blockPos.x,f.userData.blockPos.y,f.userData.blockPos.z],t:f.userData.placedType})),
+      trusted:[...player.trusted],waystones:[...player.waystones],
+      discovered:[...discoveredRecipes],
+    };
+    localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+  }catch(e){}
+}
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);if(!raw)return false;
+    const d=JSON.parse(raw);
+    if(Array.isArray(d.pos))player.pos.set(d.pos[0],d.pos[1],d.pos[2]);
+    if(d.inventory&&typeof d.inventory==='object')player.inventory=d.inventory;
+    if(Array.isArray(d.hotbar)&&d.hotbar.length===9)player.hotbar=d.hotbar;
+    if(typeof d.selectedSlot==='number')player.selectedSlot=d.selectedSlot;
+    for(const k of ['hp','hunger','temperature','resolve','monstersRepelled'])if(typeof d[k]==='number')player[k]=d[k];
+    if(typeof d.dayTime==='number')dayTime=d.dayTime;
+    if(Array.isArray(d.quests))for(const sq of d.quests){const q=quests.find(x=>x.id===sq.id);if(q)q.progress=sq.progress}
+    if(Array.isArray(d.trusted))d.trusted.forEach(t=>player.trusted.add(t));
+    if(Array.isArray(d.waystones))d.waystones.forEach(w=>player.waystones.add(w));
+    if(Array.isArray(d.discovered))d.discovered.forEach(r=>discoveredRecipes.add(r));
+    if(Array.isArray(d.foliage))for(const f of d.foliage)if(Array.isArray(f.p))addPlacedFoliage(f.p[0],f.p[1],f.p[2],f.t);
+    return true;
+  }catch(e){return false}
+}
+
+// ============================================================
 // INIT
 // ============================================================
 function init(){
@@ -3053,48 +3134,59 @@ function init(){
   if(mv){setMusicVolume(parseInt(mv));ui.musicSlider.value=mv;ui.musicValue.textContent=mv+'%'}
   const sfxV=localStorage.getItem('iw_sfxvol');
   if(sfxV){setSfxVolume(parseInt(sfxV));ui.sfxSlider.value=sfxV;ui.sfxValue.textContent=sfxV+'%'}
-  
-  // Generate initial chunks
-  rebuildVisibleChunks(true);
-  
-  // Build water
-  buildWaterMesh();
-  buildVoidFloor();
-  
-  // Build ambient
-  buildAmbient();
-  buildWeather();
-  buildBreakOverlay();
-  buildFirstPersonHands();
-  buildPlayerModel();
-  buildCelestialBodies();
-  
-  // Place agents
-  addAgent('npc','The Cartographer',8,6,{isCartographer:true});
-  addAgent('animal','Glass Elk',-18,14);
-  addAgent('animal','Lantern Hare',20,-14);
-  addAgent('waystone','North Waystone',-34,-18,{color:0x79d8c8});
-  addAgent('waystone','Ash Waystone',34,24,{color:0xf2c96d});
-  for(let i=0;i<5;i++){
-    const a=i*1.3,r=15+i*3;
-    addAgent('monster','Hollowling',Math.cos(a)*r+5,Math.sin(a)*r+3,{hp:3});
-  }
-  
-  // Find spawn
-  player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
-  
-  renderQuickbar();
-  renderQuests();
-  updateMeters();
-  updateCamera();
-  
-  // Init audio on first click
-  renderer.domElement.addEventListener('click',()=>{
-    if(!audioCtx)initAudio();
-    initMusic();
-  },{once:true});
-  
-  animate();
+
+  const testMode=new URLSearchParams(location.search).has('test');
+  setLoadingProgress(8,'Shaping the island\u2026');
+
+  // Defer the heavy world build one frame so the loading overlay paints first.
+  const build=()=>{
+    rebuildVisibleChunks(true);
+    setLoadingProgress(45,'Carving terrain\u2026');
+    buildWaterMesh();
+    buildVoidFloor();
+    setLoadingProgress(60,'Pouring water\u2026');
+    buildAmbient();
+    buildWeather();
+    buildBreakOverlay();
+    buildFirstPersonHands();
+    buildPlayerModel();
+    buildCelestialBodies();
+    setLoadingProgress(78,'Summoning wildlife\u2026');
+
+    // Place agents
+    addAgent('npc','The Cartographer',8,6,{isCartographer:true});
+    addAgent('animal','Glass Elk',-18,14);
+    addAgent('animal','Lantern Hare',20,-14);
+    addAgent('waystone','North Waystone',-34,-18,{color:0x79d8c8});
+    addAgent('waystone','Ash Waystone',34,24,{color:0xf2c96d});
+    for(let i=0;i<5;i++){
+      const a=i*1.3,r=15+i*3;
+      addAgent('monster','Hollowling',Math.cos(a)*r+5,Math.sin(a)*r+3,{hp:3});
+    }
+
+    // Default spawn, then overlay any saved progress.
+    player.pos.set(0,groundYAt(0,0)+BLOCK*2,0);
+    if(!testMode)loadGame();
+    setLoadingProgress(100,'Ready');
+
+    renderQuickbar();
+    renderQuests();
+    updateMeters();
+    updateCamera();
+    setTimeout(()=>ui.loading.classList.add('hidden'),300);
+
+    // Init audio on first click
+    renderer.domElement.addEventListener('click',()=>{
+      if(!audioCtx)initAudio();
+      initMusic();
+    },{once:true});
+
+    // Periodic autosave (skip during the QA harness).
+    if(!testMode)setInterval(saveGame,30000);
+
+    animate();
+  };
+  if(testMode)build();else requestAnimationFrame(build);
 }
 
 init();
@@ -3292,6 +3384,66 @@ if(new URLSearchParams(location.search).has('test')){
         else check('Action music only rises in danger',false,'no monster');
       }
       check('Music no longer uses oscillator composition',!String(initMusic).includes('createOscillator')&&!String(updateMusic).includes('playSound('));
+      // ---- New enhancement coverage ----
+      check('Third-person avatar built',playerModel&&scene.children.includes(playerModel));
+      {
+        const old=thirdPerson;
+        window.dispatchEvent(new KeyboardEvent('keydown',{key:'v'}));window.dispatchEvent(new KeyboardEvent('keyup',{key:'v'}));
+        const toggled=thirdPerson!==old;
+        window.dispatchEvent(new KeyboardEvent('keydown',{key:'v'}));window.dispatchEvent(new KeyboardEvent('keyup',{key:'v'}));
+        check('V key toggles view mode',toggled&&thirdPerson===old);
+      }
+      check('Starfield and sun glow exist',starField!==null&&sunGlow!==null);
+      check('Water surface animates',waterMesh&&!!waterMesh.geometry.userData.basePositions&&typeof updateWaterWaves==='function');
+      check('Crafting has 25+ recipes',RECIPES.length>=25);
+      {
+        const old=player.hotbar.slice(),oldSlot=player.selectedSlot;
+        player.hotbar[0]=33;player.selectedSlot=0;const fast=toolMineSpeed(2);
+        player.hotbar[0]=0;const slow=toolMineSpeed(2);
+        player.hotbar=old;player.selectedSlot=oldSlot;renderQuickbar();
+        check('Tool tiers speed up mining',fast>slow&&fast>=2.5);
+      }
+      {
+        const oldH=player.hunger,oldInv=player.inventory[40],oldHotbar=player.hotbar.slice(),oldSlot=player.selectedSlot;
+        player.hunger=10;player.inventory[40]=2;player.hotbar[0]=40;player.selectedSlot=0;
+        eatFood(40);
+        const ate=player.hunger>10&&player.inventory[40]===1;
+        player.hunger=oldH;if(oldInv===undefined)delete player.inventory[40];else player.inventory[40]=oldInv;
+        player.hotbar=oldHotbar;player.selectedSlot=oldSlot;renderQuickbar();
+        check('Food restores hunger when eaten',ate);
+      }
+      {
+        const oldInv=player.inventory[51];player.inventory[51]=1;const a=playerArmor();
+        if(oldInv===undefined)delete player.inventory[51];else player.inventory[51]=oldInv;
+        check('Armor reduces incoming damage',a>=4);
+      }
+      check('Damage number system ready',typeof spawnDamageNumber==='function'&&Array.isArray(damageNumbers));
+      {
+        const mon=agents.find(a=>a.userData.agent.type==='monster');
+        check('Monsters have AI state machine',!!mon&&'state' in mon.userData.agent&&mon.userData.agent.maxHp>0);
+      }
+      {
+        const vx=worldToVoxel(player.pos.x)+9,vy=Math.floor(player.pos.y/BLOCK)+9,vz=worldToVoxel(player.pos.z)+9;
+        const t=addPlacedFoliage(vx,vy,vz,5);
+        const hasLight=!!t.userData.torchLight&&t.userData.torchLight.isPointLight;
+        scene.remove(t);const idx=placedFoliage.indexOf(t);if(idx!==-1)placedFoliage.splice(idx,1);
+        check('Placed torches emit point light',hasLight);
+      }
+      check('Loading screen ready',!!ui.loading&&!!ui.loadingBar);
+      {
+        const oldInvAll={...player.inventory},oldHotbar=player.hotbar.slice(),oldSlot=player.selectedSlot,oldHp=player.hp,oldFoliage=placedFoliage.length;
+        const oldSave=localStorage.getItem(SAVE_KEY);
+        player.inventory[2]=7;player.hp=42;saveGame();
+        player.inventory[2]=0;player.hp=100;
+        const ok=loadGame();
+        const restored=ok&&player.inventory[2]===7&&Math.round(player.hp)===42;
+        player.inventory=oldInvAll;player.hotbar=oldHotbar;player.selectedSlot=oldSlot;player.hp=oldHp;
+        // Drop any foliage that load may have re-created during the round-trip.
+        while(placedFoliage.length>oldFoliage){const f=placedFoliage.pop();scene.remove(f)}
+        if(oldSave===null)localStorage.removeItem(SAVE_KEY);else localStorage.setItem(SAVE_KEY,oldSave);
+        renderQuickbar();
+        check('Save and load round-trips player state',restored);
+      }
       check('Settings persistence ready',typeof localStorage!=='undefined');
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
