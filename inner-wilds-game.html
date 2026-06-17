@@ -1631,7 +1631,7 @@ function addAgent(type,name,x,z,opts={}){
   else if(type==='waystone')model=makeWaystone(opts.color||0x79d8c8);
   else model=humanoid(0x5e78b6,false);
   model.position.set(x,y,z);
-  model.userData.agent={type,name,hp:opts.hp||2,awake:type==='monster'&&opts.awake===true,trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,opts};
+  model.userData.agent={type,name,hp:opts.hp||2,maxHp:opts.hp||2,awake:type==='monster'&&opts.awake===true,state:'idle',trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,opts};
   model.traverse(o=>{if(o.isMesh){o.userData.agentRef=model;if(!o.userData.outline)agentMeshes.push(o)}});
   scene.add(model);agents.push(model);return model;
 }
@@ -1697,7 +1697,7 @@ function updateRoamer(agent,dt,speed,radius){
 }
 
 function updateAgents(dt){
-  for(const agent of agents){
+  for(const agent of agents.slice()){
     const data=agent.userData.agent;
     const parts=agent.userData.parts;
     data.t+=dt;
@@ -1709,12 +1709,51 @@ function updateAgents(dt){
     const d=toPlayer.length();
     
     if(data.type==='monster'){
-      if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
-      if(data.awake&&d>0.01&&(d<38||player.noise>55))agent.position.addScaledVector(toPlayer.multiplyScalar(1/d),dt*(player.noise>65?4.2:2.4));
-      else agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
+      // Death shrink tween, then burst + removal.
+      if(data.dying!==undefined){
+        data.dying-=dt;
+        const base=1.48;
+        agent.scale.setScalar(base*Math.max(0,data.dying/0.3));
+        if(data.dying<=0){
+          spawnParticle(agent.position,0x7b5cff,30,5);
+          removeAgent(agent);
+          player.monstersRepelled++;
+          completeQuest('monster');
+          toast('Hollowling defeated!');
+        }
+        continue;
+      }
+      // Apply decaying knockback.
+      if(data.knockback){
+        agent.position.addScaledVector(data.knockback,dt);
+        data.knockback.multiplyScalar(Math.pow(.02,dt));
+        if(data.knockback.lengthSq()<.02)data.knockback=null;
+      }
+      const maxHp=data.maxHp||data.hp;
+      const dir=d>0.01?toPlayer.clone().multiplyScalar(1/d):new THREE.Vector3();
+      // State machine: FLEEING -> ATTACKING -> CHASING -> IDLE
+      if(data.awake&&data.hp<maxHp*0.3){
+        data.state='fleeing';
+        agent.rotation.y=Math.atan2(-dir.x,-dir.z);
+        agent.position.addScaledVector(dir,-dt*3.6);
+      } else if(data.awake&&(d<38||player.noise>55)){
+        agent.rotation.y=Math.atan2(dir.x,dir.z);
+        if(d<=2*BLOCK){
+          data.state='attacking';
+          const dmg=Math.max(0.4,(player.noise>65?14:12)-playerArmor()*2)*dt;
+          player.hp=Math.max(0,player.hp-dmg);
+          player.noise=Math.min(100,player.noise+dt*3);
+        } else {
+          data.state='chasing';
+          agent.position.addScaledVector(dir,dt*3); // pursue at ~3 m/s
+        }
+      } else {
+        data.state='idle';
+        if(d>0.01)agent.rotation.y=Math.atan2(dir.x,dir.z);
+        agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
+      }
       if(parts?.head)parts.head.rotation.x=-.12+Math.sin(data.t*3)*.05;
       if(parts?.ribs)parts.ribs.forEach((rib,index)=>{rib.scale.x=1+Math.sin(data.t*5+index)*.035});
-      if(data.awake&&d<3){player.hp=Math.max(0,player.hp-dt*12);player.noise=Math.min(100,player.noise+dt*3)}
     } else if(data.type==='animal'){
       if(player.noise>40&&d<15){
         const away=agent.position.clone().sub(player.pos);away.y=0;away.normalize();
@@ -2246,6 +2285,35 @@ function updateParticles(dt){
   }
 }
 
+// Floating combat damage numbers
+const damageNumbers=[];
+function spawnDamageNumber(position,amount,color='#ff9dae'){
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const x=c.getContext('2d');x.font='bold 46px Georgia';x.textAlign='center';x.textBaseline='middle';
+  x.fillStyle='rgba(0,0,0,.55)';x.fillText(Math.round(amount),66,34);
+  x.fillStyle=color;x.fillText(Math.round(amount),64,32);
+  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,fog:false}));
+  sp.scale.set(BLOCK*1.4,BLOCK*.7,1);
+  sp.position.copy(position);sp.position.y+=BLOCK;
+  sp.userData={age:0,life:.9};
+  scene.add(sp);damageNumbers.push(sp);
+}
+function updateDamageNumbers(dt){
+  for(let i=damageNumbers.length-1;i>=0;i--){
+    const s=damageNumbers[i];s.userData.age+=dt;
+    s.position.y+=dt*BLOCK*1.3;
+    s.material.opacity=Math.max(0,1-s.userData.age/s.userData.life);
+    if(s.userData.age>=s.userData.life){scene.remove(s);s.material.map.dispose();s.material.dispose();damageNumbers.splice(i,1)}
+  }
+}
+
+function removeAgent(agent){
+  agent.traverse(obj=>{const i=agentMeshes.indexOf(obj);if(i!==-1)agentMeshes.splice(i,1)});
+  scene.remove(agent);
+  const ai=agents.indexOf(agent);if(ai!==-1)agents.splice(ai,1);
+}
+
 // ============================================================
 // RAYCAST
 // ============================================================
@@ -2566,24 +2634,28 @@ function playerArmor(){
 // COMBAT
 // ============================================================
 function strikeMonster(agent){
+  const data=agent.userData.agent;
+  if(data.dying!==undefined)return;
+  if(player.swingCooldown>0)return;
+  player.swingCooldown=.45;
   const weapon=player.hotbar[player.selectedSlot];
   const damage=BT[weapon]?.damage||2;
-  agent.userData.agent.awake=true;
-  agent.userData.agent.hp-=damage;
+  data.awake=true;
+  data.hp-=damage;
   player.noise=Math.min(100,player.noise+5);
   triggerHandSwing(1);
   spawnParticle(agent.position,0xd97d8d,22,4);
+  spawnDamageNumber(agent.position,damage);
   playHitSound();
-  if(agent.userData.agent.hp<=0){
-    agent.traverse(obj=>{const meshIndex=agentMeshes.indexOf(obj);if(meshIndex!==-1)agentMeshes.splice(meshIndex,1)});
-    scene.remove(agent);
-    agents.splice(agents.indexOf(agent),1);
-    if(agent.userData.agent.type==='monster'){
-      player.monstersRepelled++;
-      completeQuest('monster');
-      toast('Hollowling defeated!');
+  // Knockback impulse away from the player.
+  const kb=agent.position.clone().sub(player.pos);kb.y=0;
+  if(kb.lengthSq()>1e-4){kb.normalize().multiplyScalar(BLOCK*3.5);data.knockback=kb}
+  if(data.hp<=0){
+    if(data.type==='monster'){
+      data.dying=.3; // begin shrink tween (handled in updateAgents)
     } else {
-      toast(agent.userData.agent.name+' retreated');
+      removeAgent(agent);
+      toast(data.name+' retreated');
     }
   }
 }
@@ -2942,6 +3014,7 @@ function animate(){
     updateMining(dt);
     updateAgents(dt);
     updateParticles(dt);
+    updateDamageNumbers(dt);
     updateHands(dt);
     updatePlayerModel(dt,keys.has('w')||keys.has('a')||keys.has('s')||keys.has('d')||keys.has('arrowup')||keys.has('arrowdown')||keys.has('arrowleft')||keys.has('arrowright'));
     updateDayNight(dt);
