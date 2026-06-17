@@ -1091,6 +1091,7 @@ const player={
   talked:new Set(),
   waystones:new Set(),
   monstersRepelled:0,
+  swingCooldown:0,
 };
 
 const quests=[
@@ -1660,7 +1661,7 @@ function addAgent(type,name,x,z,opts={}){
   else if(type==='waystone')model=makeWaystone(opts.color||0x79d8c8);
   else model=humanoid(0x5e78b6,false);
   model.position.set(x,y,z);
-  model.userData.agent={type,name,hp:opts.hp||2,awake:type==='monster'&&opts.awake===true,trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,opts};
+  model.userData.agent={type,name,hp:opts.hp||2,maxHp:opts.hp||2,state:'idle',knockback:null,awake:type==='monster'&&opts.awake===true,trusted:false,t:Math.random()*10,home:new THREE.Vector3(x,y,z),roam:null,opts};
   model.traverse(o=>{if(o.isMesh){o.userData.agentRef=model;if(!o.userData.outline)agentMeshes.push(o)}});
   scene.add(model);agents.push(model);return model;
 }
@@ -1738,12 +1739,32 @@ function updateAgents(dt){
     const d=toPlayer.length();
     
     if(data.type==='monster'){
-      if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
-      if(data.awake&&d>0.01&&(d<38||player.noise>55))agent.position.addScaledVector(toPlayer.multiplyScalar(1/d),dt*(player.noise>65?4.2:2.4));
-      else agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
+      // Apply and decay any knockback impulse
+      if(data.knockback){
+        agent.position.addScaledVector(data.knockback,dt);
+        data.knockback.multiplyScalar(Math.pow(0.01,dt));
+        if(data.knockback.lengthSq()<0.02)data.knockback=null;
+      }
+      const dir=d>0.01?toPlayer.clone().multiplyScalar(1/d):new THREE.Vector3(0,0,1);
+      const maxHp=data.maxHp||3;
+      // State machine: IDLE -> CHASING -> ATTACKING -> FLEEING
+      let st='idle';
+      if(data.awake&&data.hp<=maxHp*0.3)st='fleeing';
+      else if(data.awake&&(d<38||player.noise>55))st=d<2.2*BLOCK?'attacking':'chasing';
+      data.state=st;
+      if(d>0.01)agent.rotation.y=Math.atan2(st==='fleeing'?-dir.x:dir.x,st==='fleeing'?-dir.z:dir.z);
+      if(st==='chasing'){
+        agent.position.addScaledVector(dir,dt*(player.noise>65?4.2:3));
+      } else if(st==='fleeing'){
+        agent.position.addScaledVector(dir,-dt*3.4);
+      } else if(st==='attacking'){
+        player.hp=Math.max(0,player.hp-dt*12*(1-playerDefenseFactor()));
+        player.noise=Math.min(100,player.noise+dt*3);
+      } else {
+        agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
+      }
       if(parts?.head)parts.head.rotation.x=-.12+Math.sin(data.t*3)*.05;
       if(parts?.ribs)parts.ribs.forEach((rib,index)=>{rib.scale.x=1+Math.sin(data.t*5+index)*.035});
-      if(data.awake&&d<3){player.hp=Math.max(0,player.hp-dt*12);player.noise=Math.min(100,player.noise+dt*3)}
     } else if(data.type==='animal'){
       if(player.noise>40&&d<15){
         const away=agent.position.clone().sub(player.pos);away.y=0;away.normalize();
@@ -2343,6 +2364,7 @@ function hideInstance(mesh,instanceId){
 }
 
 function startMining(){
+  if(player.swingCooldown>0)return;
   const hit=raycast(5);
   if(!hit)return;
   if(hit.foliage){
@@ -2549,27 +2571,79 @@ function placeSelected(){
 // ============================================================
 // COMBAT
 // ============================================================
-function strikeMonster(agent){
-  const weapon=player.hotbar[player.selectedSlot];
-  const damage=BT[weapon]?.damage||2;
-  agent.userData.agent.awake=true;
-  agent.userData.agent.hp-=damage;
-  player.noise=Math.min(100,player.noise+5);
-  triggerHandSwing(1);
-  spawnParticle(agent.position,0xd97d8d,22,4);
-  playHitSound();
-  if(agent.userData.agent.hp<=0){
-    agent.traverse(obj=>{const meshIndex=agentMeshes.indexOf(obj);if(meshIndex!==-1)agentMeshes.splice(meshIndex,1)});
-    scene.remove(agent);
-    agents.splice(agents.indexOf(agent),1);
-    if(agent.userData.agent.type==='monster'){
-      player.monstersRepelled++;
-      completeQuest('monster');
-      toast('Hollowling defeated!');
-    } else {
-      toast(agent.userData.agent.name+' retreated');
+const damageNumbers=[];
+function spawnDamageNumber(position,amount,color='#ff9dae'){
+  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=64;
+  const ctx=canvas.getContext('2d');
+  ctx.font='bold 44px Georgia,serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.lineWidth=6;ctx.strokeStyle='rgba(0,0,0,.7)';ctx.strokeText(String(amount),64,32);
+  ctx.fillStyle=color;ctx.fillText(String(amount),64,32);
+  const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false});
+  const sprite=new THREE.Sprite(mat);
+  sprite.position.copy(position);sprite.position.y+=BLOCK;
+  sprite.scale.set(BLOCK*1.4,BLOCK*.7,1);
+  sprite.renderOrder=30;
+  scene.add(sprite);
+  damageNumbers.push({sprite,age:0,life:0.9});
+}
+function updateDamageNumbers(dt){
+  for(let i=damageNumbers.length-1;i>=0;i--){
+    const d=damageNumbers[i];
+    d.age+=dt;
+    d.sprite.position.y+=dt*BLOCK*1.4;
+    d.sprite.material.opacity=Math.max(0,1-d.age/d.life);
+    if(d.age>=d.life){scene.remove(d.sprite);d.sprite.material.map.dispose();d.sprite.material.dispose();damageNumbers.splice(i,1)}
+  }
+}
+
+const dyingAgents=[];
+function removeAgentMeshes(agent){
+  agent.traverse(obj=>{const meshIndex=agentMeshes.indexOf(obj);if(meshIndex!==-1)agentMeshes.splice(meshIndex,1)});
+}
+function killAgent(agent){
+  const data=agent.userData.agent;
+  removeAgentMeshes(agent);
+  const idx=agents.indexOf(agent);if(idx!==-1)agents.splice(idx,1);
+  dyingAgents.push({agent,t:0,baseScale:agent.scale.x});
+  if(data.type==='monster'){
+    player.monstersRepelled++;
+    completeQuest('monster');
+    toast('Hollowling defeated!');
+  } else {
+    toast(data.name+' retreated');
+  }
+}
+function updateDyingAgents(dt){
+  for(let i=dyingAgents.length-1;i>=0;i--){
+    const d=dyingAgents[i];
+    d.t+=dt;
+    const k=Math.max(0,1-d.t/0.3);
+    d.agent.scale.setScalar(d.baseScale*k);
+    if(d.t>=0.3){
+      spawnParticle(d.agent.position.clone().add(new THREE.Vector3(0,BLOCK,0)),0x7b5cff,26,5);
+      scene.remove(d.agent);
+      dyingAgents.splice(i,1);
     }
   }
+}
+
+function strikeMonster(agent){
+  if(player.swingCooldown>0)return;
+  player.swingCooldown=0.4;
+  const damage=selectedDamage();
+  const data=agent.userData.agent;
+  data.awake=true;
+  data.hp-=damage;
+  player.noise=Math.min(100,player.noise+5);
+  triggerHandSwing(1);
+  spawnParticle(agent.position.clone().add(new THREE.Vector3(0,BLOCK,0)),0xd97d8d,18,3.5);
+  spawnDamageNumber(agent.position.clone(),damage);
+  playHitSound();
+  // Knockback away from the player
+  const knock=agent.position.clone().sub(player.pos);knock.y=0;
+  if(knock.lengthSq()>0.0001){knock.normalize();data.knockback=knock.multiplyScalar(BLOCK*4)}
+  if(data.hp<=0)killAgent(agent);
 }
 
 // ============================================================
@@ -2760,6 +2834,7 @@ function ceilingYAt(x,z,fromY=0){
 }
 
 function updatePlayer(dt){
+  player.swingCooldown=Math.max(0,player.swingCooldown-dt);
   const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)).normalize();
   const right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw)).normalize();
   const move=new THREE.Vector3();
@@ -2917,6 +2992,8 @@ function animate(){
     updateCamera();
     updateMining(dt);
     updateAgents(dt);
+    updateDyingAgents(dt);
+    updateDamageNumbers(dt);
     updateParticles(dt);
     updateHands(dt);
     updatePlayerModel(dt);
