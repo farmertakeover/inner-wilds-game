@@ -1081,6 +1081,7 @@ const player={
   trusted:new Set(),
   talked:new Set(),
   waystones:new Set(),
+  discovered:new Set(),
   monstersRepelled:0,
 };
 
@@ -1221,6 +1222,20 @@ function addToInventory(type,count=1){
     const emptySlot=player.hotbar.indexOf(0);
     if(emptySlot!==-1)player.hotbar[emptySlot]=type;
   }
+  discoverRecipesFor(type);
+}
+
+// Recipe discovery: handling/holding an item reveals recipes that use or produce it.
+function recipeKnown(i){const r=RECIPES[i];return r&&(r.basic||player.discovered.has(i))}
+function discoverRecipesFor(type){
+  if(typeof RECIPES==='undefined'||!type)return;
+  let any=false;
+  RECIPES.forEach((r,i)=>{
+    if(r.basic||player.discovered.has(i))return;
+    const uses=Object.keys(r.ingredients).map(Number).includes(Number(type))||r.result===Number(type);
+    if(uses){player.discovered.add(i);any=true;if(typeof toast==='function')toast('Recipe discovered: '+r.name)}
+  });
+  if(any&&ui.craftingPanel?.classList.contains('open'))renderCrafting();
 }
 
 function renderQuickbar(){
@@ -1233,7 +1248,7 @@ function renderQuickbar(){
     if(type>0&&count>0){
       div.innerHTML=slotHTML(type,count);
     }
-    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar()});
+    div.addEventListener('click',()=>{player.selectedSlot=i;renderQuickbar();discoverRecipesFor(player.hotbar[i])});
     ui.quickbar.appendChild(div);
   }
 }
@@ -1259,14 +1274,35 @@ function updateMeters(){
 // CRAFTING
 // ============================================================
 const RECIPES=[
-  {name:'Planks x4',result:9,count:4,ingredients:{1:1},shapeless:true},
-  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true},
-  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,1:1},shapeless:false,pattern:[[9,0,0],[9,0,0],[1,0,0]]},
-  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,1:1},shapeless:false,pattern:[[10,0,0],[10,0,0],[1,0,0]]},
-  {name:'Iron Sword',result:22,count:1,ingredients:{12:2,1:1},shapeless:false,pattern:[[12,0,0],[12,0,0],[1,0,0]]},
-  {name:'Bow',result:23,count:1,ingredients:{9:3,1:2},shapeless:false,pattern:[[0,9,1],[9,1,9],[0,9,1]]},
-  {name:'Torch x4',result:24,count:4,ingredients:{1:1,9:1},shapeless:true},
-  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true},
+  // Basics are known from the start; everything else unlocks via recipe discovery.
+  {name:'Planks x4',result:9,count:4,ingredients:{5:1},shapeless:true,basic:true},
+  {name:'Sticks x4',result:61,count:4,ingredients:{9:1},shapeless:true,basic:true},
+  {name:'Cobble x2',result:10,count:2,ingredients:{2:1},shapeless:true,basic:true},
+  {name:'Torch x4',result:24,count:4,ingredients:{5:1,9:1},shapeless:true,basic:true},
+  {name:'Sand Block',result:11,count:1,ingredients:{1:4},shapeless:true,basic:true},
+  {name:'Iron Ingot',result:60,count:1,ingredients:{12:1},shapeless:true},
+  {name:'Wooden Sword',result:20,count:1,ingredients:{9:2,61:1},shapeless:false,pattern:[[9,0,0],[9,0,0],[61,0,0]]},
+  {name:'Stone Sword',result:21,count:1,ingredients:{10:2,61:1},shapeless:false,pattern:[[10,0,0],[10,0,0],[61,0,0]]},
+  {name:'Iron Sword',result:22,count:1,ingredients:{60:2,61:1},shapeless:false,pattern:[[60,0,0],[60,0,0],[61,0,0]]},
+  {name:'Bow',result:23,count:1,ingredients:{9:3,61:2},shapeless:false,pattern:[[0,9,61],[9,61,9],[0,9,61]]},
+  {name:'Wooden Pickaxe',result:30,count:1,ingredients:{9:3,61:2},shapeless:false,pattern:[[9,9,9],[0,61,0],[0,61,0]]},
+  {name:'Stone Pickaxe',result:31,count:1,ingredients:{10:3,61:2},shapeless:false,pattern:[[10,10,10],[0,61,0],[0,61,0]]},
+  {name:'Iron Pickaxe',result:32,count:1,ingredients:{60:3,61:2},shapeless:false,pattern:[[60,60,60],[0,61,0],[0,61,0]]},
+  {name:'Wooden Axe',result:33,count:1,ingredients:{9:3,61:2},shapeless:false,pattern:[[9,9,0],[9,61,0],[0,61,0]]},
+  {name:'Stone Axe',result:34,count:1,ingredients:{10:3,61:2},shapeless:false,pattern:[[10,10,0],[10,61,0],[0,61,0]]},
+  {name:'Iron Axe',result:35,count:1,ingredients:{60:3,61:2},shapeless:false,pattern:[[60,60,0],[60,61,0],[0,61,0]]},
+  {name:'Iron Helmet',result:40,count:1,ingredients:{60:5},shapeless:false,pattern:[[60,60,60],[60,0,60],[0,0,0]]},
+  {name:'Iron Chestplate',result:41,count:1,ingredients:{60:8},shapeless:false,pattern:[[60,0,60],[60,60,60],[60,60,60]]},
+  {name:'Iron Leggings',result:42,count:1,ingredients:{60:7},shapeless:false,pattern:[[60,60,60],[60,0,60],[60,0,60]]},
+  {name:'Iron Boots',result:43,count:1,ingredients:{60:4},shapeless:false,pattern:[[0,0,0],[60,0,60],[60,0,60]]},
+  {name:'Berries',result:50,count:2,ingredients:{6:2},shapeless:true},
+  {name:'Wooden Bowl',result:51,count:1,ingredients:{9:3},shapeless:true},
+  {name:'Forest Stew',result:52,count:1,ingredients:{50:2,51:1},shapeless:true},
+  {name:'Roasted Root',result:53,count:1,ingredients:{1:1,7:1},shapeless:true},
+  {name:'Flatbread',result:54,count:1,ingredients:{50:3},shapeless:true},
+  {name:'Glass Bottle',result:55,count:1,ingredients:{4:1},shapeless:true},
+  {name:'Health Tonic',result:56,count:1,ingredients:{55:1,14:1},shapeless:true},
+  {name:'Warming Draught',result:57,count:1,ingredients:{55:1,7:1},shapeless:true},
 ];
 
 // Extended block types for crafted items
@@ -1277,6 +1313,35 @@ BT[23]={name:'bow',color:0x8b6914,rough:.8,weapon:true,ranged:true,damage:5};
 BT[24]={name:'torch',color:0xddaa44,rough:.9,light:true,glow:0x442200};
 BT[25]={name:'butterfly',color:0xdd88ff,rough:.7};
 BT[26]={name:'firefly',color:0xffee88,rough:.45,light:true,glow:0x554400};
+// Tools (mine = mining-speed multiplier vs hand)
+BT[30]={name:'wooden_pickaxe',color:0x9a7a3a,rough:.8,tool:true,mine:1.5,damage:3};
+BT[31]={name:'stone_pickaxe',color:0x7a7f83,rough:.75,tool:true,mine:2.5,damage:4};
+BT[32]={name:'iron_pickaxe',color:0xbfc4dd,rough:.6,tool:true,mine:4,damage:5};
+BT[33]={name:'wooden_axe',color:0x8a6a2a,rough:.8,tool:true,mine:1.4,damage:4};
+BT[34]={name:'stone_axe',color:0x6f7479,rough:.75,tool:true,mine:2.2,damage:5};
+BT[35]={name:'iron_axe',color:0xb4b9d4,rough:.6,tool:true,mine:3.5,damage:7};
+// Materials
+BT[60]={name:'iron_ingot',color:0xd8d2c4,rough:.5,metalness:.4};
+BT[61]={name:'stick',color:0x8a6a3a,rough:.9};
+// Armor (armor = damage reduction points)
+BT[40]={name:'iron_helmet',color:0xc9cee0,rough:.55,armor:2};
+BT[41]={name:'iron_chestplate',color:0xc9cee0,rough:.55,armor:4};
+BT[42]={name:'iron_leggings',color:0xc9cee0,rough:.55,armor:3};
+BT[43]={name:'iron_boots',color:0xc9cee0,rough:.55,armor:1};
+// Food (food = saturation restored) and potions
+BT[50]={name:'berries',color:0xc23a55,rough:.8,food:8};
+BT[51]={name:'bowl',color:0x8a6038,rough:.85};
+BT[52]={name:'forest_stew',color:0xb6743a,rough:.8,food:38};
+BT[53]={name:'roasted_root',color:0xc98a44,rough:.8,food:24};
+BT[54]={name:'flatbread',color:0xe0c074,rough:.85,food:18};
+BT[55]={name:'glass_bottle',color:0x9fd8e0,rough:.3};
+BT[56]={name:'health_tonic',color:0xe24a6a,rough:.4,heal:40};
+BT[57]={name:'warming_draught',color:0xe39044,rough:.4,warm:40};
+
+// Blocks that may be set into the voxel grid via right-click placement.
+const PLACEABLE_BLOCKS=new Set([1,2,3,4,6,7,9,10,11,12]);
+function miningMultiplier(type){return BT[type]?.mine||1}
+
 let selectedRecipe=RECIPES[0];
 
 function recipeCells(recipe){
@@ -1290,7 +1355,10 @@ function recipeCells(recipe){
 }
 
 function renderCrafting(){
-  if(!selectedRecipe||!RECIPES.includes(selectedRecipe))selectedRecipe=RECIPES[0];
+  if(!selectedRecipe||!RECIPES.includes(selectedRecipe)||!recipeKnown(RECIPES.indexOf(selectedRecipe))){
+    const firstKnown=RECIPES.findIndex((r,i)=>recipeKnown(i));
+    selectedRecipe=RECIPES[firstKnown===-1?0:firstKnown];
+  }
   const selectedCanCraft=Object.entries(selectedRecipe.ingredients).every(([type,amt])=>(player.inventory[type]||0)>=amt);
   ui.craftingGrid.innerHTML='';
   for(const type of recipeCells(selectedRecipe)){
@@ -1307,15 +1375,16 @@ function renderCrafting(){
   ui.craftButton.onclick=selectedCanCraft?()=>craftRecipe(selectedRecipe):null;
   ui.craftResult.onclick=selectedCanCraft?()=>craftRecipe(selectedRecipe):null;
   ui.recipeList.innerHTML='';
-  for(const r of RECIPES){
+  RECIPES.forEach((r,i)=>{
+    if(!recipeKnown(i))return;
     const canCraft=Object.entries(r.ingredients).every(([type,amt])=>(player.inventory[type]||0)>=amt);
     const row=document.createElement('div');
     row.className='recipe-row'+(r===selectedRecipe?' active':'')+(canCraft?'':' disabled');
     const ingNames=Object.entries(r.ingredients).map(([t,a])=>`${a}x ${BT[t]?.name||t}`).join(', ');
     row.innerHTML=`<span><span class="recipe-title">${r.name}</span><br><span class="recipe-cost">${ingNames}</span></span><span>${canCraft?'Ready':'Need mats'}</span>`;
-    row.dataset.recipeIdx=RECIPES.indexOf(r);
+    row.dataset.recipeIdx=i;
     ui.recipeList.appendChild(row);
-  }
+  });
   // Event delegation for recipe list
   if(!ui.recipeList._delegated){
     ui.recipeList.addEventListener('click',e=>{
@@ -2141,7 +2210,7 @@ window.addEventListener('keydown',e=>{
       const idx=parseInt(k)-1;
       if(idx<currentDialogueChoices.length){currentDialogueChoices[idx].action();return}
     }
-    player.selectedSlot=parseInt(k)-1;renderQuickbar()
+    player.selectedSlot=parseInt(k)-1;renderQuickbar();discoverRecipesFor(player.hotbar[player.selectedSlot])
   }
 });
 window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
@@ -2340,7 +2409,8 @@ function startMining(){
   const blockType=hit.blockType;
   if(LIQUID_TYPES.has(String(blockType))){toast('Water flows around the tool. Swim, not mine.');return}
   const hardness=BT[blockType]?.hardness||1;
-  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness,blockType};
+  const tool=player.hotbar[player.selectedSlot];
+  player.mining={pos:hit.blockPos.clone(),progress:0,duration:hardness/miningMultiplier(tool),blockType};
   ui.mineMeter.hidden=true;
   updateBreakOverlay(player.mining.pos,0);
   triggerHandSwing(.7);
@@ -2453,6 +2523,7 @@ function placeSelected(){
     completeQuest('shape');
     return;
   }
+  if(!PLACEABLE_BLOCKS.has(type)){toast('That can\u2019t be placed as a block.');return}
   setBlock(placePos.x,placePos.y,placePos.z,type);
   spawnParticle(new THREE.Vector3((placePos.x+.5)*BLOCK,(placePos.y+.5)*BLOCK,(placePos.z+.5)*BLOCK),BT[type]?.color||0x79d8c8,10,2.4);
   player.inventory[type]--;
@@ -3171,6 +3242,18 @@ if(new URLSearchParams(location.search).has('test')){
         check('Water surface animates with waves',Boolean(waterMesh.userData.basePositions&&typeof updateWater==='function'&&moved));
       }
       check('Tool tiers grant weapon damage',weaponDamage(22)>weaponDamage(0));
+      check('Crafting has 25+ recipes',RECIPES.length>=25);
+      check('Tool tiers set mining speed',miningMultiplier(32)>miningMultiplier(0)&&miningMultiplier(31)>miningMultiplier(30));
+      {
+        const idx=RECIPES.findIndex(r=>r.result===60&&!r.basic);
+        const had=player.discovered.has(idx);
+        player.discovered.delete(idx);
+        const before=recipeKnown(idx);
+        discoverRecipesFor(12);
+        const after=recipeKnown(idx);
+        if(!had)player.discovered.delete(idx);else player.discovered.add(idx);
+        check('Recipe discovery unlocks recipes when holding items',idx>=0&&!before&&after);
+      }
       {
         const m=agents.find(a=>a.userData.agent.type==='monster');
         if(m){
