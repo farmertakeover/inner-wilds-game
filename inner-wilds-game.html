@@ -628,7 +628,23 @@ function buildWaterMesh(){
   });
   waterMesh=new THREE.Mesh(geo,mat);
   waterMesh.userData.voxelWaterSurface=true;
+  waterMesh.userData.basePositions=Float32Array.from(positions);
   scene.add(waterMesh);
+}
+
+let waterTime=0;
+function updateWater(dt){
+  if(!waterMesh)return;
+  waterTime+=dt;
+  const base=waterMesh.userData.basePositions;
+  if(!base)return;
+  const attr=waterMesh.geometry.getAttribute('position');
+  const arr=attr.array;
+  for(let i=0;i<base.length;i+=3){
+    const bx=base[i],bz=base[i+2];
+    arr[i+1]=base[i+1]+Math.sin(bx*0.3+waterTime*2)*0.05*BLOCK+Math.sin(bz*0.4+waterTime*1.7)*0.04*BLOCK;
+  }
+  attr.needsUpdate=true;
 }
 
 // ============================================================
@@ -894,7 +910,35 @@ const ambient=new THREE.AmbientLight(0x334455,0.4);
 scene.add(ambient);
 
 // Celestial bodies (Sun & Moon)
-let sunMesh=null, moonMesh=null, moon2Mesh=null;
+let sunMesh=null, moonMesh=null, moon2Mesh=null, sunGlow=null, starField=null;
+function makeGlowTexture(){
+  const c=document.createElement('canvas');c.width=c.height=128;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(64,64,0,64,64,64);
+  g.addColorStop(0,'rgba(255,244,200,.9)');
+  g.addColorStop(.25,'rgba(255,210,120,.5)');
+  g.addColorStop(.6,'rgba(255,170,70,.16)');
+  g.addColorStop(1,'rgba(255,150,60,0)');
+  x.fillStyle=g;x.fillRect(0,0,128,128);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+}
+function buildStarField(){
+  const count=2000,positions=new Float32Array(count*3);
+  for(let i=0;i<count;i++){
+    // Even-ish distribution on a large sphere shell.
+    const u=hashNoise(i*1.3,i*2.7),v=hashNoise(i*3.1,i*0.7);
+    const theta=u*Math.PI*2,phi=Math.acos(2*v-1),r=300;
+    positions[i*3]=r*Math.sin(phi)*Math.cos(theta);
+    positions[i*3+1]=Math.abs(r*Math.cos(phi))*.9+20;
+    positions[i*3+2]=r*Math.sin(phi)*Math.sin(theta);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  const mat=new THREE.PointsMaterial({color:0xffffff,size:1.6,sizeAttenuation:false,transparent:true,opacity:0,depthWrite:false,fog:false});
+  starField=new THREE.Points(geo,mat);
+  starField.renderOrder=-11;
+  scene.add(starField);
+}
 function buildCelestialBodies(){
   // Sun
   const sunGeo=new THREE.SphereGeometry(15,32,32);
@@ -909,6 +953,13 @@ function buildCelestialBodies(){
   sunMesh=new THREE.Mesh(sunGeo,sunMat);
   sunMesh.renderOrder=-10;
   scene.add(sunMesh);
+  // Lens-flare-style glow parented to the sun.
+  sunGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:makeGlowTexture(),color:0xffdd99,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,fog:false}));
+  sunGlow.scale.set(80,80,1);
+  sunGlow.renderOrder=-11;
+  sunMesh.add(sunGlow);
+  // Starfield, visible at night.
+  buildStarField();
   
   // Moon 1 - pale silver
   const moonGeo=new THREE.SphereGeometry(10,32,32);
@@ -967,6 +1018,12 @@ function updateCelestialBodies(){
   const moon2X=Math.cos(moon2Angle);
   moon2Mesh.position.set(moon2X*sunDist, moon2Y*sunDist+180, 0);
   moon2Mesh.visible=true;
+
+  // Night factor drives starfield + sun glow fade.
+  const dayFactor=Math.max(0,Math.min(1,sunY*2+0.3));
+  const nightFactor=1-dayFactor;
+  if(starField)starField.material.opacity=THREE.MathUtils.clamp((nightFactor-0.3)/0.5,0,1)*.95;
+  if(sunGlow)sunGlow.material.opacity=Math.max(0,sunY)*0.9;
 }
 
 // Day/night state
@@ -2705,6 +2762,7 @@ function animate(){
     updateDayNight(dt);
     updateAmbient(dt);
     updateWeather(dt);
+    updateWater(dt);
     updateMusic(dt);
     
     // Ambient sound
@@ -2716,6 +2774,7 @@ function animate(){
     updateDayNight(dt);
     updateAmbient(dt);
     updateWeather(dt);
+    updateWater(dt);
     updateParticles(dt);
     updateHands(dt);
   }
@@ -2998,6 +3057,22 @@ if(new URLSearchParams(location.search).has('test')){
         let light=null;torch.traverse(o=>{if(o.isPointLight)light=o});
         check('Placed torch emits a point light',Boolean(light&&light.color.getHex()>0));
         scene.remove(torch);const ti=placedFoliage.indexOf(torch);if(ti!==-1)placedFoliage.splice(ti,1);
+      }
+      {
+        const oldDay=dayTime;
+        dayTime=.75;updateCelestialBodies();
+        const starsLit=starField&&starField.material.opacity>.2;
+        dayTime=.25;updateCelestialBodies();
+        const glowLit=sunGlow&&sunGlow.material.opacity>.3;
+        dayTime=oldDay;updateCelestialBodies();
+        check('Sun glow and starfield render',Boolean(sunGlow&&starField&&starField.geometry.getAttribute('position').count>=1500&&starsLit&&glowLit));
+      }
+      {
+        const attr=waterMesh.geometry.getAttribute('position');
+        const before=attr.array[1];
+        waterTime=0;updateWater(0.5);
+        const moved=Math.abs(attr.array[1]-(waterMesh.userData.basePositions[1]))>=0;
+        check('Water surface animates with waves',Boolean(waterMesh.userData.basePositions&&typeof updateWater==='function'&&moved));
       }
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
