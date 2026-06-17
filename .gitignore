@@ -1,0 +1,5 @@
+*.bak
+*.backup
+node_modules/
+.env
+/tmp/
