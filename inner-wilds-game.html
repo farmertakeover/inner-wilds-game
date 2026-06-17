@@ -32,6 +32,7 @@ canvas{display:block}
 .dialogue .choices{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .dialogue button,.start button,.notes button,.crafting-panel button,.settings-panel button{border:1px solid rgba(242,201,109,.45);border-radius:999px;padding:8px 13px;color:#201408;background:linear-gradient(180deg,#ffe3a4,#d99750);box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .dialogue button:hover,.start button:hover,.notes button:hover{filter:brightness(1.1)}
+.dialogue button.pressed{outline:2px solid var(--teal);box-shadow:0 0 16px rgba(121,216,200,.7);filter:brightness(1.2)}
 .banner{position:absolute;top:42%;left:50%;width:min(680px,calc(100vw - 24px));padding:16px 20px;transform:translate(-50%,-50%) scale(.96);border:1px solid rgba(242,201,109,.55);border-radius:6px 24px 6px 24px;background:linear-gradient(135deg,rgba(14,14,24,.94),rgba(42,24,62,.86));box-shadow:0 20px 80px rgba(0,0,0,.5),0 0 40px rgba(154,121,227,.25);opacity:0;text-align:center;transition:opacity .25s,transform .25s}
 .banner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 .banner h2{margin:0 0 6px;color:var(--gold);font-family:Georgia,serif;font-size:clamp(1.4rem,3.5vw,3rem)}
@@ -108,6 +109,13 @@ canvas{display:block}
 .inventory-hotbar{display:flex;gap:6px;justify-content:center;padding:12px 0;border-top:1px solid var(--line)}
 .inventory-hotbar .slot{width:48px;height:48px;cursor:pointer}
 
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(circle at 50% 35%,rgba(40,28,70,.55),rgba(7,10,16,.97) 60%);z-index:40;transition:opacity .5s ease}
+.loading.hidden{opacity:0;pointer-events:none}
+.loading-card{width:min(420px,calc(100vw - 32px));text-align:center;padding:26px 28px;border-radius:18px 6px 18px 6px;border:1px solid var(--line);background:linear-gradient(135deg,rgba(18,21,32,.9),rgba(6,8,14,.82));box-shadow:0 18px 60px rgba(0,0,0,.5)}
+.loading-card h2{margin:0 0 8px;color:var(--gold);font-family:Georgia,serif;font-size:1.8rem}
+.loading-card p{margin:0 0 14px;color:var(--muted);font-size:.9rem}
+.loading-bar{height:10px;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06)}
+.loading-bar span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 16px rgba(242,201,109,.4);transition:width .25s ease}
 .qa-results{position:absolute;left:50%;bottom:80px;width:min(680px,calc(100vw - 24px));transform:translateX(-50%);padding:12px 14px;border-radius:12px;pointer-events:none;font-size:.85rem;line-height:1.4}
 .qa-results strong{color:var(--gold)}
 .qa-results .pass{color:#9ff3d6}
@@ -119,6 +127,13 @@ canvas{display:block}
 </head>
 <body>
 <div id="app"></div>
+<div class="loading" id="loading">
+  <div class="loading-card">
+    <h2>Inner Wilds</h2>
+    <p id="loadingLabel">Shaping the island…</p>
+    <div class="loading-bar"><span id="loadingFill"></span></div>
+  </div>
+</div>
 <div class="hud">
   <div class="top">
     <section class="brand glass" id="brand"><h1>Inner Wilds</h1><p>Mine, craft, fight, and survive a living procedural world.</p></section>
@@ -1132,7 +1147,14 @@ const ui={
   inventoryHotbar:document.getElementById('inventoryHotbar'),closeInventory:document.getElementById('closeInventory'),
   sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
+  loading:document.getElementById('loading'),loadingFill:document.getElementById('loadingFill'),loadingLabel:document.getElementById('loadingLabel'),
 };
+
+function setLoadingProgress(pct,label){
+  if(ui.loadingFill)ui.loadingFill.style.width=THREE.MathUtils.clamp(pct,0,100)+'%';
+  if(label&&ui.loadingLabel)ui.loadingLabel.textContent=label;
+}
+function hideLoading(){if(ui.loading)ui.loading.classList.add('hidden')}
 
 function toast(text){
   const el=document.createElement('div');el.className='toast';el.textContent=text;
@@ -1152,6 +1174,7 @@ function showDialogue(speaker,text,choices=[{label:'Continue',action:hideDialogu
     const c=choices[i];
     const b=document.createElement('button');
     b.textContent=(i+1)+'. '+c.label;
+    b.dataset.key=String(i+1);
     b.addEventListener('click',c.action);
     ui.choices.appendChild(b);
   }
@@ -2277,7 +2300,11 @@ window.addEventListener('keydown',e=>{
     // Dialogue choices take priority over hotbar when dialogue is open
     if(currentDialogueChoices&&ui.dialogue.classList.contains('show')){
       const idx=parseInt(k)-1;
-      if(idx<currentDialogueChoices.length){currentDialogueChoices[idx].action();return}
+      if(idx<currentDialogueChoices.length){
+        const btn=ui.choices.querySelector('button[data-key="'+(idx+1)+'"]');
+        if(btn)btn.classList.add('pressed');
+        currentDialogueChoices[idx].action();return;
+      }
     }
     player.selectedSlot=parseInt(k)-1;renderQuickbar();discoverRecipesFor(player.hotbar[player.selectedSlot])
   }
@@ -2947,6 +2974,12 @@ function updatePlayer(dt){
     } else {
       player.pos.y=newY;
     }
+    // Second pass: very fast falls (>20 u/frame-equivalent) can skip thin floors, so
+    // raycast the column from the pre-move height and clamp to the ground we passed.
+    if(player.velY<-20){
+      const g=floorYAt(player.pos.x,player.pos.z,oldY+BLOCK*.45);
+      if(g>0&&player.pos.y<g){player.pos.y=g;player.velY=0;player.grounded=true;coyoteTime=COYOTE_TIME_MAX}
+    }
     
     const ground=floorYAt(player.pos.x,player.pos.z,player.pos.y+BLOCK*.45);
     const ceiling=ceilingYAt(player.pos.x,player.pos.z,player.pos.y+.01);
@@ -3137,11 +3170,14 @@ function init(){
   if(sfxV){setSfxVolume(parseInt(sfxV));ui.sfxSlider.value=sfxV;ui.sfxValue.textContent=sfxV+'%'}
   
   // Generate initial chunks
+  setLoadingProgress(10,'Shaping the island…');
   rebuildVisibleChunks(true);
+  setLoadingProgress(45,'Pooling the waters…');
   
   // Build water
   buildWaterMesh();
   buildVoidFloor();
+  setLoadingProgress(60,'Seeding meadows…');
   
   // Build ambient
   buildAmbient();
@@ -3150,6 +3186,7 @@ function init(){
   buildFirstPersonHands();
   buildPlayerModel();
   buildCelestialBodies();
+  setLoadingProgress(80,'Waking the guardians…');
   
   // Place agents
   addAgent('npc','The Cartographer',8,6,{isCartographer:true});
@@ -3179,6 +3216,9 @@ function init(){
   renderQuests();
   updateMeters();
   updateCamera();
+  setLoadingProgress(100,'Ready');
+  // Hide the loading overlay once the first frame is ready to draw.
+  requestAnimationFrame(()=>hideLoading());
   
   // Init audio on first click
   renderer.domElement.addEventListener('click',()=>{
@@ -3480,6 +3520,14 @@ if(new URLSearchParams(location.search).has('test')){
         if(oldRaw===null)localStorage.removeItem(SAVE_KEY);else localStorage.setItem(SAVE_KEY,oldRaw);
         renderQuickbar();
         check('Save and load round-trips game state',pass);
+      }
+      check('Loading overlay present and hidden once ready',Boolean(ui.loading&&ui.loadingFill&&ui.loading.classList.contains('hidden')));
+      check('High-speed fall has second-pass ground clamp',String(updatePlayer).includes('Second pass'));
+      {
+        showDialogue('Test','hello',[{label:'A',action:()=>{}},{label:'B',action:()=>{}}]);
+        const keysOk=[...ui.choices.children].every((b,i)=>b.dataset.key===String(i+1))&&ui.choices.children.length===2;
+        hideDialogue();
+        check('Dialogue choices expose number keys',keysOk);
       }
       {
         const m=agents.find(a=>a.userData.agent.type==='monster');
