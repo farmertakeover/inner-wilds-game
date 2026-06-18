@@ -4462,6 +4462,34 @@ if(new URLSearchParams(location.search).has('test')){
         check('Menu panels toggle (settings not shown under main)',s1&&s2);
       }
       check('Save guards against persisting underground',String(saveGame).includes('safeY'));
+      {
+        // Restored jump: stronger launch velocity (was nerfed to 14).
+        const oldPos=player.pos.clone(),oldVel=player.velY,oldGrounded=player.grounded,oldCoyote=coyoteTime,oldDead=player.dead;
+        player.dead=false;player.pos.y=groundYAt(player.pos.x,player.pos.z)+.05;player.velY=0;player.grounded=true;coyoteTime=COYOTE_TIME_MAX;
+        tryJump(false);
+        const strongJump=player.velY>=16;
+        player.pos.copy(oldPos);player.velY=oldVel;player.grounded=oldGrounded;coyoteTime=oldCoyote;player.dead=oldDead;
+        check('Jump launch velocity restored to stronger feel',strongJump,'velY='+player.velY.toFixed(1));
+      }
+      {
+        // Death flow: killPlayer shows the death screen, empties carried items,
+        // and drops them; respawn clears the dead state and hides the screen.
+        const oldInv={...player.inventory},oldHot=player.hotbar.slice(),oldHp=player.hp,oldDead=player.dead,oldPos=player.pos.clone();
+        const dropStart=droppedItems.length;
+        player.inventory={2:5,3:2};player.hotbar=[2,3,0,0,0,0,0,0,0];player.hp=10;player.dead=false;
+        if(ui.deathScreen)ui.deathScreen.hidden=true;
+        killPlayer('test');
+        const screenShown=ui.deathScreen&&ui.deathScreen.hidden===false;
+        const emptied=Object.values(player.inventory).every(v=>v===0)&&player.hotbar.every(s=>s===0);
+        const droppedSome=droppedItems.length>dropStart;
+        const deadFlag=player.dead===true;
+        respawn();
+        const revived=player.dead===false&&(!ui.deathScreen||ui.deathScreen.hidden===true)&&player.hp>0;
+        for(const item of droppedItems.slice(dropStart))removeDroppedItem(item);
+        player.inventory=oldInv;player.hotbar=oldHot;player.hp=oldHp;player.dead=oldDead;player.pos.copy(oldPos);
+        if(ui.deathScreen)ui.deathScreen.hidden=true;renderQuickbar();
+        check('Death screen shows, drops all items, and respawn revives',screenShown&&emptied&&droppedSome&&deadFlag&&revived);
+      }
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
     ui.qaPanel.hidden=false;
