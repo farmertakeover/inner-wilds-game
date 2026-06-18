@@ -316,8 +316,8 @@ const WORLD_SEED = 27183;
 const BASE_MOUSE_SENS = 0.00165;
 const MAX_PARTICLES = 120;
 const TICK_RATE = 1/60;
-const GAME_VERSION = 'v0.5.0';
-const GAME_VERSION_NAME = 'Boss & Survival Update';
+const GAME_VERSION = 'v0.6.0';
+const GAME_VERSION_NAME = 'Cel-Shaded Update';
 
 const BLOCK_TYPES = {
   0:{name:'air',solid:false,transparent:true},
@@ -4434,6 +4434,12 @@ if(new URLSearchParams(location.search).has('test')){
       check('Archipelago has multiple islands',Array.isArray(ISLANDS)&&ISLANDS.length>=3&&ISLANDS.some(i=>i.x!==0||i.z!==0));
       check('Island falloff peaks at a satellite center',islandFalloff(ISLANDS[1].x,ISLANDS[1].z)>0.9);
       check('Block textures have depth bevel',typeof applyBlockDepth==='function'&&String(drawBlockTexture).includes('applyBlockDepth'));
+      {
+        // Cel shading: terrain + models use MeshToonMaterial with a banded gradient ramp.
+        const terrainToon=[...chunkMeshes.values()].every(m=>m.material.isMeshToonMaterial&&m.material.gradientMap===toonGradient);
+        const gradSteps=toonGradient?.image?.width>=3;
+        check('Cel-shaded toon ramp applied to terrain',terrainToon&&gradSteps,'steps='+(toonGradient?.image?.width||0));
+      }
       check('Player avatar is humanoid (arms/legs/hands)',Boolean(playerModel?.userData.lArm&&playerModel.userData.rLeg)&&playerModel.children.length>10);
       {
         // RPG quests: a fresh expedition has exactly one active quest, rest locked.
