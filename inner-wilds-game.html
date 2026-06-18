@@ -719,7 +719,8 @@ function buildChunkMesh(cx,cz){
   merged.setIndex(indices);
   merged.computeBoundingSphere();
   
-  const mat=new THREE.MeshStandardMaterial({map:getBlockAtlasTexture(),vertexColors:true,roughness:.86,metalness:0});
+  // Cel-shaded terrain: baked vertex colors + atlas, banded by the toon ramp.
+  const mat=new THREE.MeshToonMaterial({map:getBlockAtlasTexture(),vertexColors:true,gradientMap:getToonGradient()});
   const mesh=new THREE.Mesh(merged,mat);
   mesh.position.set(cx*CHUNK_SIZE*BLOCK,0,cz*CHUNK_SIZE*BLOCK);
   mesh.matrixAutoUpdate=false;
@@ -818,7 +819,7 @@ renderer.setSize(innerWidth,innerHeight);
 renderer.setClearColor(0x0b1018);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.05;
+renderer.toneMappingExposure=1.18; // brighter, punchier anime exposure
 renderer.shadowMap.enabled=false;
 document.getElementById('app').appendChild(renderer.domElement);
 window.addEventListener('resize',()=>{
@@ -1276,9 +1277,11 @@ function updateDayNight(dt){
   sun.position.set(sunX*60,sunY*60+10,20);
   
   const dayFactor=currentDayFactor();
-  const skyR=THREE.MathUtils.lerp(0.02,0.45,dayFactor);
-  const skyG=THREE.MathUtils.lerp(0.02,0.65,dayFactor);
-  const skyB=THREE.MathUtils.lerp(0.04,0.85,dayFactor);
+  // Brighter, more saturated anime sky with a warm horizon lift at dawn/dusk.
+  const dusk=Math.max(0,1-Math.abs(dayFactor-.5)*2.6);
+  const skyR=THREE.MathUtils.lerp(0.03,0.42,dayFactor)+dusk*.18;
+  const skyG=THREE.MathUtils.lerp(0.03,0.72,dayFactor)+dusk*.05;
+  const skyB=THREE.MathUtils.lerp(0.07,0.98,dayFactor);
   scene.background=new THREE.Color(skyR,skyG,skyB);
   scene.fog.color.set(scene.background);
   
@@ -1849,7 +1852,26 @@ function makeModelTexture(color){
   const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(1.8,1.8);
   modelTextureCache.set(key,tex);return tex;
 }
-function modelMat(color,extra={}){return new THREE.MeshStandardMaterial({color,map:extra.map||makeModelTexture(color),roughness:.78,metalness:.04,...extra})}
+// Cel/toon gradient ramp: a tiny 1xN texture of brightness steps. Sampling it
+// as a MeshToonMaterial gradientMap turns smooth lighting into flat anime bands.
+let toonGradient=null;
+function getToonGradient(){
+  if(toonGradient)return toonGradient;
+  const steps=[60,120,190,255];
+  const data=new Uint8Array(steps.length*4);
+  for(let i=0;i<steps.length;i++){data[i*4]=data[i*4+1]=data[i*4+2]=steps[i];data[i*4+3]=255}
+  toonGradient=new THREE.DataTexture(data,steps.length,1,THREE.RGBAFormat);
+  toonGradient.magFilter=toonGradient.minFilter=THREE.NearestFilter;
+  toonGradient.needsUpdate=true;
+  return toonGradient;
+}
+function modelMat(color,extra={}){
+  // Cel-shaded material: flat banded lighting + the procedural model texture.
+  const {emissive,...rest}=extra;
+  const m=new THREE.MeshToonMaterial({color,map:extra.map||makeModelTexture(color),gradientMap:getToonGradient(),...rest});
+  if(emissive!==undefined)m.emissive=new THREE.Color(emissive);
+  return m;
+}
 function glowMat(color,opacity=.6){return new THREE.MeshBasicMaterial({color,transparent:true,opacity,blending:THREE.AdditiveBlending,depthWrite:false})}
 const outlineCache=new Map();
 const mats={
