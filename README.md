@@ -1,6 +1,6 @@
 # Inner Wilds — 3D Voxel Survival/Adventure Game
 
-**Current version: `v0.4.0` — "Archipelago Update"** (shown in the main menu and the top-right HUD badge).
+**Current version: `v0.5.0` — "Boss & Survival Update"** (shown in main menu and top-right HUD badge).
 
 A browser-based 3D voxel survival/adventure game built with **Three.js** (CDN, no bundler). Single-file HTML, fully playable in Chrome/Firefox.
 
@@ -19,284 +19,21 @@ python3 -m http.server 8080 --bind 127.0.0.1
 
 | Key | Action |
 |---|---|
-| WASD | Move / Sprint (hold) |
+| WASD | Move / Sprint (hold shift) |
 | Space | Jump (hold while moving = auto-jump) |
 | Left-click | Mine block / Attack creature |
-| Right-click | Place selected item |
+| Right-click | Place selected item / Eat food / Drink potion |
 | E | Interact (talk to NPCs, activate) |
 | F | Center breath (restore resolve) |
-| Tab | Toggle inventory |
+| Tab | Toggle inventory + Journal/Quests |
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
 | Q | Drop the selected stack |
-| Tab | Inventory **+ Journal/Quests** popup |
 | M | Main menu (New Game / Continue / Settings) |
 | V | Toggle 1st/3rd person |
 | Enter | Advance dialogue |
 | Esc | Release pointer lock |
-
-Right-click while holding food/potions eats or drinks them. The quest journal now lives **inside the Tab popup** (no longer pinned to the screen).
-
----
-
-## Full Enhancement Prompt
-
-Copy and paste the prompt below into Claude 4.8, Cursor, or any AI coding agent to have them enhance the game.
-
----
-
-```
-You are a senior game dev and design critic. Your job is to play and critique `inner-wilds-game.html`, then enhance it. This is a browser-based 3D voxel survival/adventure game (Three.js, no bundler, single HTML file). Open it with a local HTTP server (`python3 -m http.server`) and play it in Chrome.
-
-## Before You Code
-
-Play the game thoroughly first:
-- Walk around, jump, sprint, swim
-- Mine blocks, place blocks, craft items (Tab key)
-- Talk to the Cartographer (E key near NPCs)
-- Fight Hollowlings (left-click monsters)
-- Try butterfly/firefly catching, placing torches
-- Press F to center yourself
-- Watch the day/night cycle, weather, sun, moons
-- Open Settings (M menu or Start menu)
-
-Read `tests/test-qa-visual.js` to understand the automated QA harness.
-Read `tests/test-auto-play.js` to understand the HTTP playthrough system.
-
-## Architecture Overview
-
-`inner-wilds-game.html` is ~3000 lines, all in one file. No build step. Three.js loaded from CDN.
-
-### Key variables (module-scoped, accessible in console via `window.*` not guaranteed):
-- `camera` / `scene` / `renderer` — standard Three.js, camera is `scene.add(camera)` now
-- `player` — `{ pos, velY, inventory, hotbar, selectedSlot, primaryHeld, mining, grounded, hp, hunger, temperature, resolve, noise, monstersRepelled }`
-- `dayTime` — 0..1 float, drives sun position
-- `weather` — `{ type, intensity }`
-- `soundVolume`, `musicVolume`, `sfxVolume` — audio mix
-- `renderDistance` — chunks radius (2-8)
-- `agents` — array of NPC/monster groups
-- `placedFoliage` — array of sprite meshes (grass, flowers, bugs, torches)
-- `musicNodes` — `{ calm, danger, calmVolume, dangerVolume, calmTarget, dangerTarget, dangerLevel }`
-
-### Systems:
-- **World**: 64×40×64 chunked voxel grid, greedy-meshed visible faces, baked vertex-color lighting
-- **Textures**: Procedural canvas atlas per block type (moss, dirt, stone, etc.)
-- **Water**: Per-voxel surface quads (not a giant plane) for correct shoreline
-- **Foliage**: Grass/flowers are cross-plane sprites with canvas textures; butterflies are 3D groups (body + wings); fireflies are InstancedMesh
-- **Audio**: Web Audio API oscillators for SFX, HTMLAudioElement loops for music (dual CC0 tracks crossfaded)
-- **Day/Night**: Sun angle drives light color/intensity, moon phase, firefly activity
-- **Quests**: Hidden waystones + chart recovery + Hollowling defeat
-- **QA**: Append `?test` to load in QA mode — runs 61 self-tests and renders results in `#qaPanel`
-- **Automated Testing**: `GAME_URL=http://127.0.0.1:8080/inner-wilds-game.html node tests/test-auto-play.js` runs a headed browser playthrough
-
-## Priority Issues to Fix (ordered by impact)
-
-### CRITICAL UX
-1. **Hands barely visible** — `buildFirstPersonHands()` at line ~728. Arms are too small (cylinder 0.10×0.10×0.30, hand sphere radius 0.08). Enlarge arm width to 0.16, hand radius to 0.12. Keep group at `(0, -0.38, -0.55)`. Add `depthTest: false` to skin/sleeve materials to prevent z-fighting with world geometry.
-2. **No player model for 3rd person** — Add `buildPlayerModel()` that creates a simple humanoid (head sphere + body box + limb boxes). Add a `thirdPerson` boolean toggled by V key. When thirdPerson: set `handRig.group.visible=false`, position camera at `player.pos + offsetBehindAndAbove`, have camera lookAt player. Player model should hold the selected item in its right hand (copy `updateHandItem()` logic onto the model).
-3. **Creatures not reliably hit** — The raycaster in `pointerdown` hits `agentMeshes` but misses when agents' children meshes haven't had `updateMatrixWorld(true)` called. In `raycast()`, call `scene.updateMatrixWorld(true)` before the agent intersection test. Also widen the `raycaster.far` to 6×BLOCK for combat.
-4. **Torch placed as block** — Type 5 needs to route through `addPlacedFoliage()` in `placeSelected()` (already partially done; verify). The torch sprite should emit a `THREE.PointLight(0xff8833, 0.4, 8)` at its position. When mining a placed torch, return a torch item.
-
-### VISUAL & ATMOSPHERE
-5. **Celestial bodies look fake** — Sun/moon at `updateCelestialBodies()` are plain spheres. Add a lens flare / glow sprite parented to sunMesh (large semi-transparent Sprite with additive blending). Add a starfield: create a THREE.Points with ~2000 small white vertices on a large sphere (radius 300), visible only when `nightFactor > 0.3`.
-6. **No dynamic sky** — Replace static background with a sky gradient. Create a large sphere (sky dome) with vertex colors that lerp through a dawn/day/dusk/night color ramp based on `dayTime`. Or simpler: use 4 canvas gradients and lerp `scene.background` between them as a THREE.Color.
-7. **Water is flat** — In `buildWaterMesh()` or `updateWaterMesh()`, apply sin-based vertex displacement: `y += sin(x * 0.3 + time * 2) * 0.05 + sin(z * 0.4 + time * 1.7) * 0.04`. Make water material transparent with `opacity: 0.6` and `color: 0x3a7a8a`.
-8. **No crosshair** — Add a simple CSS crosshair (`+` in center of screen, pointer-events: none).
-
-### GAMEPLAY
-9. **Combat is shallow** — Sword swing needs cooldown (prevent mining while swinging). Add `player.swingCooldown` timer. Monsters should take knockback (apply velocity away from player). Add floating damage numbers (temporary sprite that floats up and fades). Monster death: tween scale to 0 over 0.3s, then particle burst.
-10. **Survival meters don't matter** — Hunger depletes 3× faster. Add 5 food items with varying saturation. Temperature: player moves 20% slower when freezing (< 20°), takes damage over time. Standing within 3 blocks of a placed torch restores warmth at +15°/s.
-11. **Crafting is too limited** — Add `RECIPES` array with 25+ recipes: wooden pickaxe (3 sticks + 2 planks), stone pickaxe (2 sticks + 3 stone), iron pickaxe (2 sticks + 3 iron ingot), armor pieces, food (berries + bowl = stew), potions (bottle + flower = health). Add recipe discovery: first time you hold an item, its recipes unlock with a toast.
-12. **Inventory UX** — Add Q to drop current stack. Add Shift+click to quick-move between inventory and hotbar. Add auto-sort button. Show total stack count in hotbar slots.
-
-### SYSTEMS & POLISH
-13. **Tool tiers** — Add mining speed multiplier per tool type: hand=1×, wooden=1.5×, stone=2.5×, iron=4×. Each tier has different damage vs monsters. Display tool icon in hotbar.
-14. **Sound FX** — Add footsteps (play at intervals based on movement speed, use filtered noise oscillator). Water splash (higher pitched noise when entering/exiting water). Item pickup (short rising tone). Replace `playMineSound` with a more pleasant chipping sound (no retro square wave).
-15. **Monster AI** — When `awake=true`, Hollowlings should path toward player at 3m/s. When within 2 blocks, they stop and deal damage (contact damage). When HP < 30% of max, they flee. Add a simple state machine: IDLE → CHASING → ATTACKING → FLEEING.
-16. **Chunk stutter** — Replace movement-gated rebuild with chunk-boundary-crossing rebuild. Only rebuild when `Math.floor(player.pos.x / (CHUNK_SIZE*BLOCK))` or `Math.floor(player.pos.z / (CHUNK_SIZE*BLOCK))` changes. Cache visible chunk keys in a Set and diff.
-17. **Save/load** — Expand localStorage save to include: `player.inventory`, `player.hotbar`, `player.selectedSlot`, `player.hp`, `player.hunger`, `player.temperature`, `player.resolve`, `player.monstersRepelled`, `quests`, `placedFoliage` positions/types. Auto-save every 30s via `setInterval`. Load on `init()`.
-18. **Loading screen** — Add a fullscreen loading overlay with progress bar. During `rebuildVisibleChunks(true)` in init, track chunks generated and update progress. Hide overlay when first chunk batch completes.
-
-### BUGS
-19. **Tunneling through ground** — Swept collision at line ~2549 checks 3×3 columns but still misses at very high velocity (> 30 units/frame). Add a second pass: if `player.velY < -20`, force a raycast downward from the player's feet to find ground, clamping pos.y.
-20. **Dialogue not keyboard-friendly** — Dialogue buttons show `[1] [2]` prefix from `showDialogue()` but some don't. Add a `data-key` attribute to each button and highlight when corresponding number key is pressed.
-21. **Music loop click** — If `loop` attribute on HTMLAudioElement produces audible click at boundary, switch to Web Audio API: `fetch` the MP3 as ArrayBuffer, decode, create `AudioBufferSourceNode` with `loop=true`, connect to gain node. Use `setValueAtTime` for smooth volume changes.
-
-## Testing After Each Change
-
-1. Load `inner-wilds-game.html?test` — must show "Self-test: 61/61 passed" (or updated count)
-2. Run `GAME_URL=http://127.0.0.1:8000/inner-wilds-game.html node tests/test-auto-play.js` — must exit cleanly with no crashes
-3. Manually verify the feature works in a headed browser
-
-## Code Conventions
-
-- No external dependencies beyond Three.js CDN
-- Single file, no build step
-- ES module context (`<script type="module">`)
-- Use `const`/`let`, no `var`
-- 2-space indentation, no semicolons (current style is mixed — match surrounding code)
-- Toast for player feedback: `toast('message')`
-- Spawn particles: `spawnParticle(position, hexColor, count, spread)`
-- Play SFX: `playSound(freq, duration, type='sine', vol=0.15)`
-- Show dialogue: `showDialogue('Speaker', 'text', [{label:'Choice', action:callback}])`
-- Keys: `showCrafting`, `showBanner`, `completeQuest`, `addToInventory`, `renderQuickbar`
-- `renderQuickbar()` must be called after inventory changes to sync UI
-- Block types: defined in `BT` object, keyed by numeric ID
-
-## File Reference
-
-| File | Location |
-|---|---|
-| Game HTML | `inner-wilds-game.html` |
-| Backup (detailed models) | `inner-wilds-game-backup.html` |
-| QA visual tests | `tests/test-qa-visual.js` |
-| HTTP playthrough | `tests/test-auto-play.js` |
-| Test setup docs | `tests/README.md` |
-```
-
----
-
-## Recurring Improvement Strategy
-
-Every time an AI agent works on this game, follow this loop:
-
-### 1. Research Phase
-Before writing a single line of code, the agent should:
-- Play the game in a browser for 5+ minutes
-- Read the QA test file to understand what's tested
-- Read the automated playthrough to understand the smoke test
-- grep through the HTML file to find relevant code sections
-
-### 2. Plan Phase
-- Identify the top 3 issues that would make the biggest player experience improvement
-- Trace the full code path for each issue (input → update → render)
-- Check if any existing functions already handle part of it
-
-### 3. Implement Phase
-- Make changes one at a time
-- Run QA (`?test`) after each change
-- Run automated playthrough after each change
-- Verify manually in headed browser for visual changes
-
-### 4. Commit Phase
-- Commit with descriptive message: `"fix: description of change"`
-- Push when a logical batch is complete
-
-### 5. Recurse Phase
-- The agent should note what new issues or opportunities it discovered while working
-- Update this README with new findings
-- Start the next session with the fresh context
-
----
-
-## Advanced: Recursive AI Agentic Research Pipeline
-
-For maximum improvement velocity, you can run a **multi-agent recursive pipeline** where AI agents research, implement, and review in parallel:
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│           RESEARCH AGENT (Claude)            │
-│  - Reads all source files                    │
-│  - Searches web for best practices           │
-│  - Identifies 10 highest-impact changes      │
-│  - Outputs: `research/findings.md`           │
-└────────────┬───────────────────────────────┘
-             │ feeds into
-             ▼
-┌─────────────────────────────────────────────┐
-│           PLANNING AGENT (GPT-4o)           │
-│  - Takes research findings                  │
-│  - Produces detailed implementation spec    │
-│  - Breaks into independent parallel tasks   │
-│  - Outputs: `plan/sprint.md`                │
-└────────────┬───────────────────────────────┘
-             │ splits into tasks
-             ▼
-┌─────────────────────────────────────────────┐
-│        IMPLEMENTATION AGENTS (parallel)      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐    │
-│  │  Agent 1 │ │  Agent 2 │ │  Agent 3 │    │
-│  │  (Graph) │ │  (Audio) │ │  (Combat)│    │
-│  └──────────┘ └──────────┘ └──────────┘    │
-│       Each runs QA after changes             │
-└────────────┬───────────────────────────────┘
-             │ merge changes
-             ▼
-┌─────────────────────────────────────────────┐
-│         REVIEW AGENT (Claude Code)          │
-│  - Reviews diff for regressions             │
-│  - Runs full QA suite                       │
-│  - Runs automated playthrough               │
-│  - Signs off or requests fixes              │
-└────────────┬───────────────────────────────┘
-             │ ship
-             ▼
-┌─────────────────────────────────────────────┐
-│         DOCUMENTATION AGENT                 │
-│  - Updates README with new features         │
-│  - Updates tests for new functionality      │
-│  - Records decisions in ADR format          │
-└─────────────────────────────────────────────┘
-```
-
-### How to Run It
-
-```bash
-# Step 1: Research
-claude "Read inner-wilds-game.html and research/investigate the codebase. Output findings to research/findings.md"
-
-# Step 2: Plan (use the prompt above)
-gpt4o "Take research/findings.md and produce plan/sprint.md with parallel task breakdown"
-
-# Step 3: Implement (run agents in parallel terminals)
-# Terminal 1
-claude "Implement spec from plan/sprint.md task 1 in inner-wilds-game.html. Run QA after."
-# Terminal 2  
-claude "Implement spec from plan/sprint.md task 2 in inner-wilds-game.html. Run QA after."
-# Terminal 3
-claude "Implement spec from plan/sprint.md task 3 in inner-wilds-game.html. Run QA after."
-
-# Step 4: Merge & Review
-claude "Merge all changes and review the full diff. Run QA suite and automated playthrough."
-
-# Step 5: Document
-claude "Update README.md and tests for any new features added."
-```
-
-### Auto-Research Topics
-
-When the research agent runs, it should investigate these topics to inform game improvements:
-
-1. **Three.js best practices 2026** — Are we using deprecated APIs? What's the recommended approach for instanced mesh updates, fog, render pipeline?
-2. **Voxel game rendering research** — How do Minecraft-like games optimize chunk meshing in Three.js? Is greedy meshing optimal?
-3. **Procedural content generation** — What noise algorithms produce the most interesting terrain? How to add caves, overhangs, floating islands?
-4. **Web Audio API spatial audio** — Can we add 3D positioned sounds? How to do smooth crossfades without clicks?
-5. **Mobile touch controls for 3D games** — What control schemes work best for mobile FPS? How to implement virtual joysticks?
-6. **AI behavior trees for games** — Simple state machine vs behavior tree for monster AI? How to implement pathfinding on a voxel grid?
-7. **LocalStorage vs IndexedDB for game saves** — When does localStorage hit limits? How to migrate to IndexedDB?
-8. **WebGL performance profiling** — How to profile draw calls, shader complexity, memory usage in Chrome DevTools?
-
-### Research Agent Prompt Template
-
-```
-You are a research agent. Investigate this topic for the Inner Wilds game:
-[TOPIC]
-
-Read relevant sections of inner-wilds-game.html first.
-Then use web search to find:
-1. Current best practices
-2. Common pitfalls
-3. Implementation patterns that work well
-
-Output a concise findings document with:
-- Summary (2-3 sentences)
-- Recommended approach (specific code patterns)
-- What to avoid
-- Priority (critical/high/medium/low)
-- Estimated implementation effort (minutes)
-```
+| F5 | Toggle third-person view |
 
 ---
 
@@ -308,14 +45,415 @@ You wake on a fragment of a long-shattered island, floating in an endless starry
 ### The Cartographer
 A blue-cloaked figure with a satchel full of half-drawn maps. They remember the island before it broke. They're searching for the **Waystone Chart** — a map of resonance points that, when activated, may reveal how to restore the land.
 
+### The Hollow Surveyor
+The Surveyor was once the island's geomancer — the one who mapped the memory-lodes and calibrated the waystones. When the shattering came, they refused to leave their post. Now they drift within a brass compass-rim, their map-panels orbiting like planets, guarding the deepest waystone. They speak in route-directions. They do not remember friendship.
+
+The Surveyor has three phases:
+- **Phase 1**: Shockwave attacks, walks toward the player
+- **Phase 2**: Fractures the ring — teleports around the arena, charges at the player, summons Echo minions
+- **Phase 3**: Ground slams, multi-ring shockwaves, rapid charges, desperate Echo summons
+
 ### Hollowlings
-Dormant guardians that once protected the island's secrets. Stirred by noise (mining, combat), they patrol and attack. They can be avoided by moving quietly, or fought head-on for resources.
+Dormant guardians that once protected the island's secrets. Stirred by noise (mining, combat), they patrol and attack. They can be avoided by moving quietly, or fought head-on for resources. Night spawns are capped at 7 per night to prevent overwhelming the player.
+
+### The Archipelago
+Five islands in a crystalline sea:
+| Island | Biome | Radius | Character |
+|--------|-------|--------|-----------|
+| **Survey Isle** (0,0) | Mixed — flatland, ashen, amber, mirror, mosswood | 58 | The starting island, holds the Cartographer and the Surveyor's arena |
+| **Amberreach** (118, 14) | Amber desert, warm microclimate | 30 | Home of the Tide Waystone |
+| **Misthold** (-34, 120) | Soft-fog weather, cool and damp | 34 | Dense foliage, quiet |
+| **Ashen Spur** (-114, -44) | Ash plains, ember-toned palette | 30 | Hostile Hollowling dens |
+| **Glasslight Key** (74, -110) | Mirror-shard beaches, icy shallows | 26 | Crystal formations, Glass Elk territory |
 
 ### Waystones
-Ancient monoliths hidden across the island. Restoring them (by placing specific crystals found underground) slowly reveals the Waystone Chart. All six must be restored to complete the map.
+Ancient monoliths hidden across the islands. Restoring them (by studying the Cartographer's notes) slowly reveals the Island Chart. Three waystones are placed at session start; others wait to be discovered on distant islands.
 
-### The Goal
-Recover the Island Chart from the Cartographer by restoring the waystones. Decide whether to fight or befriend the Hollowlings. Uncover what shattered the island in the first place.
+---
+
+## Architecture
+
+### Overview
+
+`inner-wilds-game.html` is ~4400 lines, all in one file. No build step. Three.js loaded from CDN (`<script type="module">`).
+
+### Key Module-Scoped Variables
+- `camera` / `scene` / `renderer` — standard Three.js, camera is added to scene
+- `player` — `{ pos, velY, inventory, hotbar, hp, hunger, temperature, resolve, noise, monstersRepelled, trusted, waystones, discovered, boating, grounded }`
+- `dayTime` — 0..1 float, drives sun position
+- `weather` — `{ type, intensity }` — one of: clear, softFog, mirrorRain, emberAsh
+- `agents` — array of NPC/monster/boss/animal groups
+- `chunks` — Map of chunk key → Uint8Array voxel data
+- `chunkMeshes` — Map of chunk key → Three.js Mesh (greedy-meshed)
+- `placedFoliage` — array of sprite meshes (grass, flowers, bugs, torches)
+- `droppedItems` — array of dropped item entities
+
+### Rendering Pipeline
+
+```
+animate() → updatePlayer() → updateSurvival() → updateCamera() → 
+updateMining() → updateAgents() → updateParticles() → 
+updateHands() → renderFrame()
+
+renderFrame():
+  1. camera.layers.set(0)       → render main scene (terrain, entities)
+  2. if first person:
+     scene.background = null
+     autoClear = false
+     clearDepth()
+     camera.layers.set(VIEWMODEL_LAYER)   → render viewmodel arms/held item
+     restore state
+```
+
+### Systems
+- **World**: 64×40×64 chunked voxel grid, greedy-meshed visible faces, baked vertex-color lighting
+- **Textures**: Procedural canvas atlas per block type (moss, dirt, stone, amber, mirror, iron, ember, etc.)
+- **Terrain**: `terrainHeight()` with biomes via `terrainZone()` — perlin-based height + island falloff + biome-specific noise overlay
+- **Water**: Per-voxel surface quads with animated sin-wave vertices
+- **Foliage**: Grass/flowers are cross-plane sprites; butterflies are 3D groups (body + wings); fireflies are InstancedMesh with animated glow
+- **Audio**: Web Audio API oscillators for SFX, HTMLAudioElement loops for music (dual CC0 tracks crossfaded via gain nodes)
+- **Day/Night**: Sun angle drives light color/intensity, moon phase, firefly activity, starfield visibility
+- **First-person viewmodel**: Two-pass layered rendering — main scene on layer 0, arms/hands on layer 1 with cleared depth buffer
+- **Third-person**: Toggle with V, hides viewmodel, shows playerModel with arm-swing animation, camera orbits behind player
+- **Collision**: Swept AABB with 1-block-wide footprint support, anti-tunneling clamp, void catch
+- **Boss**: Three-phase Hollow Surveyor with shockwave/charge/teleport/ground-slam attacks, minion summoning, arena ring
+- **Quests**: Locked → active → done state machine, triggered by exploration and NPC interaction
+- **Dropped items**: Physics (gravity + ground collision), 10s lifetime, pickup on contact
+- **Boat**: Craftable floating platform entity with WASD steering and water physics
+- **Sleep**: Bedroll item skips to dawn
+- **Crafting**: 27+ recipes, recipe discovery toasts
+- **AI**: Hollowling state machine (IDLE → CHASING → ATTACKING → FLEEING), Surveyor Echo minion AI, animal idle wander
+
+---
+
+## Exhaustive Development Roadmap
+
+> A complete vision for the game as if a professional team of artists, engineers, designers, and writers worked on it for years. Each section is ordered by priority.
+
+---
+
+### I. CRITICAL BUGS & STABILITY
+
+#### 1. Viewmodel Limb Ghosting (CURRENT)
+**Symptom**: Multiple hands/arms appear beneath the real ones in first-person view.
+**Investigations so far**:
+- All viewmodel meshes correctly use `VIEWMODEL_LAYER=1` (confirmed via layer mask inspection)
+- Main pass renders layer 0 only (mask 1), overlay pass renders layer 1 only (mask 2)
+- `renderer.clearDepth()` correctly clears only the depth buffer between passes
+- `try/finally` guard added to prevent leaked camera/background state
+- Suspected remaining cause: Three.js renderer may not fully discard the color buffer between passes with `autoClear=false`, causing the viewmodel to composite over stale world pixels on some GPU/driver combinations
+
+**Planned fixes**:
+- [ ] Add `renderer.state.buffers.depth.setClearValue(1)` before overlay pass
+- [ ] Test with `renderer.clear(false, true, false)` explicitly instead of `clearDepth()`
+- [ ] If driver-specific, implement a dedicated overlay canvas: render viewmodel to an offscreen canvas, composite via CSS `mix-blend-mode` or a second `<canvas>` layer
+- [ ] As fallback: render viewmodel in main pass with `depthWrite: false` + `renderOrder: 999` (no overlay pass needed)
+- [ ] Add automated screenshot comparison test to detect limb ghosting
+
+#### 2. Save-Load Robustness
+- [x] Fixed: missing `spawnPoint()` function causing crash on death/load with hp=0
+- [x] Fixed: `spawnDroppedItem` argument order in `respawn()`
+- [x] Fixed: hp guard in `loadGame()` clamps to 1 if save contains hp <= 0
+- [ ] Add save data version migration system (current v1 → v2 with additional fields)
+- [ ] Validate save data integrity (checksum or field-type checking)
+- [ ] Fallback to autosave if main save is corrupted
+
+#### 3. Collision Edge Cases
+- [ ] Player can sometimes fall through water surface at high velocity
+- [ ] Boat collision with terrain can clip player through blocks
+- [ ] Dropped items can fall through floor at chunk boundaries
+- [ ] Boss can push player through arena pillars
+
+---
+
+### II. GRAPHICS & RENDERING
+
+#### 4. Lighting Overhaul
+- [ ] **Deferred or multi-pass lighting**: Currently all lighting is baked into vertex colors. Add dynamic shadow mapping for sun/moon and torch light
+- [ ] **Shadow mapping**: PCF soft shadows for directional light (sun/moon), cascaded for large world
+- [ ] **Point light shadows**: For placed torches, held torch, boss arena center
+- [ ] **Ambient occlusion**: SSAO post-process or baked AO in chunk meshes (higher-resolution AO pass)
+- [ ] **Volumetric fog**: Layered fog with height falloff, god rays through fog at dawn
+- [ ] **Bloom post-process**: UnrealBloomPass for torch glow, boss energy, waystone activation
+- [ ] **Tone mapping**: Current ACESFilmic is good; add exposure auto-adjustment based on time of day
+- [ ] **HDR rendering**: Float render targets for better light accumulation
+
+#### 5. Terrain & Environment
+- [ ] **Better terrain noise**: Multi-octave domain-warped simplex noise with 3D caves and overhangs
+- [ ] **Cave systems**: Underground tunnels, caverns, ore seams, underground water, glowing crystal formations
+- [ ] **Floating islands**: Small island fragments above the main terrain, reachable by climbing/jumping
+- [ ] **Custom trees**: Procedural trunk+branches+canopy with Three.js tree generation (not just blocks)
+- [ ] **Improved water**: Refraction shader, shoreline foam particles, underwater caustics, animated wave normal maps
+- [ ] **Weather effects**: Rain particle system (thousands of particles), snow, fog density variation, wind on grass/foliage
+- [ ] **Clouds**: 3D cloud layer (sprite cloud cards or volumetric raymarched clouds) that cast shadows
+- [ ] **LOD system**: Distance-based chunk mesh detail levels (far chunks use merged low-poly geometry)
+- [ ] **Ocean beyond islands**: Animated infinite ocean plane with vertex shader waves, visible from high ground
+- [ ] **Underwater**: Caustic light patterns, depth fog, different ambient color, muffled audio
+
+#### 6. Block & Item Visuals
+- [ ] **PBR block textures**: Metalness/roughness/emissive maps per face on relevant blocks
+- [ ] **Animated textures**: Lava glow pulse, water ripple on surface, torch flame animation
+- [ ] **Connected textures**: Grass/dirt transition, ore veins that connect across adjacent blocks
+- [ ] **Block breaking animation**: Crack texture overlay with damage stages (Like Minecraft's break progression)
+- [ ] **Item model viewer**: 3D item preview in inventory tooltip / crafting result slot
+- [ ] **Enhanced tools**: 3D tool models (pickaxe, axe, sword) with tier-specific materials and colors
+- [ ] **Durability bar**: Visual wear indicator on tools and armor in hotbar
+
+#### 7. Character & Creature Models
+- [ ] **Player model rig**: Skinned mesh with IK-based animation (walk, run, jump, swim, mine, swing)
+- [ ] **First-person body**: Show legs/body when looking down in first-person view
+- [ ] **Hollowling redesign**: Glowing eye slits, crystalline growths, translucent body showing internal lights
+- [ ] **Surveyor redesign**: Floating brass-and-stone frame, articulated compass arms, orbiting map panels with glowing arcana
+- [ ] **Animal variants**: Multiple Glass Elk color morphs, Lantern Hare seasonal coat changes
+- [ ] **Damage flash**: Model tint shift + emission on hit
+- [ ] **Death animations**: Ragdoll (simple) or disintegration particles per creature type
+- [ ] **Agent LOD**: Far agents render as simple sprite billboards
+
+#### 8. UI & HUD
+- [ ] **Crosshair**: Refined dynamic crosshair — expands when mining, shows break progress ring, damage hit marker
+- [ ] **Health bar**: Stylized hearts/bar with damage vignette overlay, heal glow
+- [ ] **Hunger / temperature / resolve**: Doughnut-ring gauges around health bar, or compact vertical side meters
+- [ ] **Hotbar**: Improved slot styling with durability bar, cooldown overlay, enchantment glint
+- [ ] **Inventory**: Grid-based with drag-to-rearrange, category tabs, search filter
+- [ ] **Crafting**: Recipe tree view, show/hide uncraftable recipes, favorite/bookmark system
+- [ ] **Compass**: Top-of-screen compass strip showing N/S/E/W, marked waypoints, boss indicator
+- [ ] **Minimap**: Bottom-right corner, top-down rendered chunk view with player/target markers
+- [ ] **Quest log**: Full-screen journal with completed quest history, lore entries, bestiary
+- [ ] **Dialogue**: Portrait art for speakers, typewriter text animation, branching dialogue tree
+- [ ] **Boss health bar**: Prominent top-center bar during boss fight with phase indicators
+- [ ] **Damage numbers**: Animated floating text with damage type color, crit indication, healing in green
+- [ ] **Toast system**: Stacking toasts with slide-in animation, category icons
+- [ ] **Notification tray**: Inbox for quest updates, discoveries, system messages
+- [ ] **Settings**: FOV slider, brightness/gamma, mouse sensitivity separate X/Y, volume mixers (master/music/sfx/ambient), render distance (2-12), quality preset (low/medium/high/ultra), key binding remapping, accessibility options
+- [ ] **Save slot UI**: Per-slot screenshot preview, world age, play time, delete confirmation
+- [ ] **Loading screen**: Animated island render, tip rotation, progress bar with stage labels
+- [ ] **Main menu**: Animated background (orbiting waystones or island fragment rotation)
+
+---
+
+### III. GAMEPLAY SYSTEMS
+
+#### 9. Combat Overhaul
+- [ ] **Melee combos**: Click-timing combo chains (3-sword combo with increasing damage)
+- [ ] **Blocking**: Right-click with shield to block damage, stamina drain
+- [ ] **Dodge roll**: Double-tap movement key for invincibility-frame dodge
+- [ ] **Ranged combat**: Craftable bow and arrows, arrow physics (gravity, falloff), different arrow types
+- [ ] **Magic**: Craftable staves with elemental spells (fireball, ice spike, lightning bolt, heal)
+- [ ] **Status effects**: Poison (damage over time), Slow, Stun, Burn, Frozen, Cursed
+- [ ] **Critical hits**: Hit from behind or while target is unaware = 2x damage
+- [ ] **Weak points**: Specific body parts take more damage (Hollowling head, Surveyor core)
+- [ ] **Parry**: Well-timed block before melee hit = stun enemy, open to counter-attack
+- [ ] **Knockback physics**: Weight-based knockback resistance, environmental collision damage
+
+#### 10. Survival Systems
+- [ ] **Thirst**: Separate water meter, fresh water (rain collection, rivers) vs salt water (oceans dehydrate)
+- [ ] **Disease**: Dirty water/food can cause illness, craftable medicines from found herbs
+- [ ] **Oxygen**: Underwater breath timer, air bubbles from underwater plants, snorkel/scuba gear
+- [ ] **Stamina**: Sprint, jump, attack, and dodge consume stamina; regens when idle
+- [ ] **Rest**: Sleep in bedroll fully restores, sitting by fire partially restores resolve
+- [ ] **Temperature depth**: Four layers (hyperthermia → warm → cool → hypothermia) with progressive effects
+- [ ] **Seasonal cycle**: Long-term season system (30 day cycles) affecting temperature, day length, weather patterns, foliage color
+- [ ] **Crop farming**: Till soil, plant seeds, water, wait for growth, harvest for renewable food
+- [ ] **Animal husbandry**: Capture and breed animals for food and materials
+- [ ] **Cooking**: Campfire and furnace recipes with ingredient combinations and quality tiers
+
+#### 11. Progression & Equipment
+- [ ] **Tool tiers**: Wood → Stone → Iron → Gold (fast but weak) → Diamond → Netherite-style endgame
+- [ ] **Enchanting**: Enchantment table with XP system, randomized enchant options
+- [ ] **Potion brewing**: Stand with ingredients, water bottles, nether wart base, secondary ingredients for effects
+- [ ] **Armor set bonuses**: Full set grants special ability (e.g., full leather = silent movement, full iron = knockback resist)
+- [ ] **Accessory slots**: Ring, amulet, belt, cape — each with minor passive bonuses
+- [ ] **Backpack**: Craftable backpack expands inventory capacity
+- [ ] **XP / skill levels**: Earn XP from mining, combat, crafting, exploration; spend on enchantments or skill tree
+- [ ] **Skill tree**: Three branches — Survival (better food, faster healing), Combat (melee/ranged/magic bonuses), Crafting (unlock recipes, quality bonuses)
+
+#### 12. Boss & Enemies
+- [ ] **More bosses**: Each satellite island has a unique boss — the Amber Warden (golem), the Mistweaver (phantom), the Ashen King (fire elemental), the Crystal Guardian (Glasslight Key)
+- [ ] **Boss mechanics per phase**: Each boss has 3+ distinct phases with unique attack patterns, arena hazards, enrage timers
+- [ ] **Minion variety**: Hollowling variants — brute (slow + heavy), scout (fast + frail), shaman (ranged + healing), sentinel (high HP + shield)
+- [ ] **Night-only enemies**: Shadow wraiths, will-o-wisps that lead you off cliffs, nightmare phantoms
+- [ ] **Environmental hazards**: Lava pools, quicksand, thorn bushes, ice patches, poisonous gas vents
+- [ ] **Boss rewards**: Unique crafting materials, new block types, lore tablets, access to locked areas
+- [ ] **Arena design**: Each boss arena has unique geometry, hazards, and interactive elements
+
+#### 13. Exploration & World
+- [ ] **Waystone network**: All 6+ waystones, when activated, create fast-travel points between islands
+- [ ] **Treasure maps**: Cartographer gives you maps showing hidden structure locations
+- [ ] **Ruins**: Procedurally generated stone structures with loot chests, spawners, puzzles
+- [ ] **Puzzles**: Lever/door puzzles, pressure plate sequences, light-reflection puzzles using waystone energy
+- [ ] **Abandoned camps**: Lore-filled campsites with journals, half-built projects
+- [ ] **Underwater ruins**: Sunken structures accessible with underwater gear
+- [ ] **Peak viewpoints**: Highest point on each island reveals nearby points of interest
+- [ ] **Trading**: Cartographer trades maps for materials, other NPCs trade unique items
+- [ ] **World events**: Random events — meteor shower (rare resources), Hollowling migration, aurora borealis at night
+
+#### 14. Multiplayer Foundation
+- [ ] **WebRTC peer-to-peer**: Basic multiplayer with position syncing, shared world state
+- [ ] **Server-authoritative combat**: Prevent cheating with server-side hit validation
+- [ ] **Shared chunks**: Chunk ownership transfer, load balancing between peers
+- [ ] **Voice chat**: Proximity-based WebRTC audio
+- [ ] **Co-op boss fights**: Multiple players in the Surveyor arena, shared aggro
+
+---
+
+### IV. AUDIO
+
+#### 15. Music
+- [ ] **Dynamic soundtrack**: Adaptive music system that layers instruments based on context — calm exploration, combat intensity, boss phase, underwater
+- [ ] **Original score**: Composed thematic tracks per biome (amber desert strings, ice island chimes, ash plains drums)
+- [ ] **Boss themes**: Unique track per boss with phase transitions (Phase 2 adds brass, Phase 3 adds choir)
+- [ ] **Night music**: Softer, more mysterious arrangement with distant howls
+- [ ] **Weather-reactive music**: Rain adds soft percussion, fog muffles the mix, wind adds airy pads
+- [ ] **Menu theme**: Title screen ambient track
+- [ ] **Victory fanfare**: Short sting on quest completion, boss defeat, waystone activation
+
+#### 16. Sound Effects
+- [ ] **Spatial audio**: All world sounds use PannerNode for 3D positioning (footsteps, mining, creatures, water, weather)
+- [ ] **Footsteps**: Material-dependent footstep sounds (grass→soft, stone→hard, water→splash, wood→creak)
+- [ ] **Mining**: Per-block-type break sounds (stone→chisel, dirt→shovel, wood→axe, ore→metallic ping)
+- [ ] **Placement**: Satisfying thunk sound per block type
+- [ ] **Item pickup/drop**: Short rising/chiming feedback
+- [ ] **Inventory**: Paper rustle, equipment equip/unequip
+- [ ] **Combat**: Sword swoosh, hit impact (per material), block clang, parry ring
+- [ ] **Boss**: Surveyor's mechanical hum, charge warning sound, teleport warp sound, shockwave boom
+- [ ] **Ambient**: Wind depending on altitude/weather, insect chirps at dusk, distant Hollowling groans
+- [ ] **Underwater**: Muffled filter on all sounds, heartbeat when oxygen low, bubble sounds
+- [ ] **UI clicks**: Soft click/hover feedback for all interactive elements
+- [ ] **Weather**: Rain intensity layers, thunder rumbles, wind gusts
+
+---
+
+### V. PERFORMANCE & OPTIMIZATION
+
+#### 17. Rendering Optimization
+- [ ] **Frustum culling**: Skip rendering chunks outside camera view (Three.js already does this per-mesh, but chunk-level culling reduces draw calls)
+- [ ] **Occlusion culling**: GPU-based occlusion queries for chunks behind terrain
+- [ ] **LOD chunks**: Far chunks use simplified mesh (merge faces, reduce vertex count)
+- [ ] **Instanced blocks**: High-density blocks (dirt/stone) at distance render as instanced mesh
+- [ ] **Texture atlas**: Current atlas works, but compress to fewer larger tiles with mipmaps
+- [ ] **Reduce draw calls**: Merge all visible chunk meshes into a single geometry per frame when no blocks change
+- [ ] **GPU instancing for foliage**: All grass/flowers as a single InstancedMesh, same for all butterflies/fireflies
+- [ ] **Greedy meshing optimization**: Current algorithm is O(n³); optimize with chunk-level skip if no block changes
+- [ ] **Async chunk generation**: Web Worker for terrain height and block data generation (but Three.js mesh creation must stay on main thread)
+- [ ] **Async mesh creation**: Deferred mesh creation queue, process 1-2 chunks per frame to avoid hitches
+- [ ] **GLB/GLTF export for static parts**: Pre-generate island terrain as optimized glb, stream-load on init
+
+#### 18. Memory Management
+- [ ] **Chunk unload**: Unload mesh and data for chunks beyond render distance + margin
+- [ ] **Texture atlas garbage collection**: Remove unused block textures from atlas when no blocks of that type are loaded
+- [ ] **Geometry pooling**: Reuse chunk geometries when rebuilding (mark dirty, update in place)
+- [ ] **Audio buffer pooling**: Limit simultaneous sounds, recycle AudioBufferSourceNode instances
+- [ ] **Dropped item limit**: Global cap on concurrent dropped items, despawn oldest/farthest first
+- [ ] **Particle limit**: Strict particle count cap, recycle particle objects
+- [ ] **Agent count cap**: Maximum creatures loaded at once, despawn distance-based
+
+#### 19. Frame Rate Targets
+- [ ] **60 FPS on mid-range (2020+)**: Full terrain, lighting, particles, audio, 6 chunk render distance
+- [ ] **30 FPS on low-end laptops**: Reduced particle count, 4 chunk distance, simple water, no dynamic shadows
+- [ ] **120 FPS on high-end desktops**: Max settings, 12 chunk distance, shadows, bloom, volumetric fog
+- [ ] **Detect capability**: Auto-detect GPU/driver capability and set quality preset
+- [ ] **Dynamic resolution**: Scale render resolution down when framerate drops below target
+- [ ] **Progressive loading**: Stream chunks nearest-first, render placeholder fog for unloaded areas
+
+#### 20. Network & Asset Loading
+- [ ] **Three.js CDN caching**: Service worker for CDN assets, fallback to local cache
+- [ ] **Texture preload**: Generate all block textures during loading screen, not lazily on first block view
+- [ ] **Audio preload**: Pre-decode sound effect buffers during init
+- [ ] **Split file**: Core engine + deferred assets (music files, high-res textures loaded after first render)
+
+---
+
+### VI. UI & USER EXPERIENCE
+
+#### 21. Visual Polish
+- [ ] **Animations**: Smooth transitions for panel open/close, toast slide-in, hotbar item pop-in
+- [ ] **Translucency**: Glass panel backgrounds with backdrop blur where supported
+- [ ] **Icon set**: Custom SVG icons for all item types, status effects, UI actions
+- [ ] **Tooltips**: Rich hover tooltips on all items showing stats, description, recipe source
+- [ ] **Key hint badges**: Context-sensitive key hints near interactive elements ("E to talk", "F to center")
+- [ ] **Notification badges**: Red dot on new quests, unread journal entries, craftable recipes
+- [ ] **Color theming**: Light/dark mode toggle, optional high-contrast mode for accessibility
+
+#### 22. Accessibility
+- [ ] **Remappable keys**: Full keyboard binding UI with conflict detection
+- [ ] **Controller support**: Gamepad API for movement, camera, actions — dual-stick + triggers
+- [ ] **Colorblind modes**: Protanopia/deuteranopia/tritanopia filter on UI and world
+- [ ] **Subtitle system**: All dialogue, NPC speech, boss taunts subtitled with speaker name
+- [ ] **Screen reader**: ARIA labels on all interactive elements, live region for toasts
+- [ ] **Motion reduction**: Option to reduce camera bob, screen shake, particle effects
+- [ ] **Font scaling**: UI text size options
+- [ ] **Auto-mine toggle**: Hold-to-mine vs click-to-mine setting
+- [ ] **Invert Y**: Separate mouse and controller invert options
+
+#### 23. Mobile Support
+- [ ] **Virtual joystick**: Left-side movement joystick, right-side camera drag
+- [ ] **Tap-to-mine**: Tap blocks to mine, hold for auto-mine
+- [ ] **Touch UI**: Larger interactive zones, swipe to scroll inventory
+- [ ] **Responsive layout**: Adapt HUD and menus to mobile aspect ratios
+- [ ] **Pinch zoom**: Camera distance adjustment in third person
+
+---
+
+### VII. STORY & CONTENT
+
+#### 24. Narrative Arc
+- [ ] **Act I — The Waking**: Tutorial island, learn to survive, meet Cartographer, restore first waystone
+- [ ] **Act II — The Archipelago**: Reach satellite islands, discover the Surveyor's history, restore more waystones
+- [ ] **Act III — The Reckoning**: Confront the Hollow Surveyor, decide the island's fate (restore or shatter again?)
+- [ ] **Endings**: Multiple endings based on choices (who you trusted, which waystones you restored, whether you defeated or reasoned with the Surveyor)
+
+#### 25. Characters
+- [ ] **The Cartographer**: Full backstory — they were the Surveyor's apprentice. They can teach you to read the island's memory.
+- [ ] **The Hollow Surveyor**: Boss dialogue evolves per phase. Phase 1: route commands. Phase 2: fragmented memories. Phase 3: their true name, a plea.
+- [ ] **The Glass Elk**: Ancient spirit of the mirror biomes. If you earn its trust, it guides you through the fog.
+- [ ] **The Lantern Hare**: Frightened creature that collects lost light. Follow it to hidden areas.
+- [ ] **Amberreach Hermit**: An old Hollowling who refused the Surveyor's call. Sells rare maps in exchange for amber.
+- [ ] **Misthold Watcher**: A ghostly figure who appears only in fog. Gives cryptic warnings about the Surveyor.
+
+#### 26. Lore & Worldbuilding
+- [ ] **The Shattering**: Full backstory — the civilization tried to crystallize all memory into a single waystone, the island couldn't bear the weight
+- [ ] **Memory crystal texts**: Scattered collectible texts that reveal history, recipes, poetry from the old civilization
+- [ ] **Bestiary**: Unlockable creature entries with lore, habitat, drops, behavior notes
+- [ ] **Environmental storytelling**: Ruined buildings tell a story through their layout — residential, workshop, temple, observatory
+- [ ] **Seasonal events**: In-game calendar holidays tied to the island's history
+
+#### 27. Content Volume Targets
+- [ ] **Block types**: 80+ unique blocks with distinct textures and behaviors
+- [ ] **Item types**: 120+ items (tools, weapons, armor, food, potions, materials, artifacts)
+- [ ] **Recipes**: 80+ craftable recipes including multi-stage processing
+- [ ] **Quests**: 30+ quests across all acts, including optional side quests and repeatables
+- [ ] **Journal entries**: 50+ lore entries, 20+ creature bestiary entries
+- [ ] **Achievements**: 40+ achievements with unlock tracking and toast notifications
+- [ ] **Dialogue**: 500+ lines of dialogue across all NPCs, branching responses
+- [ ] **Music tracks**: 15+ original compositions, adaptive stems
+
+---
+
+### VIII. TECHNICAL DEBT & ENGINE
+
+#### 28. Code Quality
+- [ ] **Split into modules**: Separate concerns into logical files (world.js, player.js, combat.js, ui.js, audio.js, etc.) with ES module imports
+- [ ] **TypeScript migration**: Add JSDoc types first, then migrate to .ts with incremental adoption
+- [ ] **Unit tests**: Jest/Playwright unit tests for core systems (collision, inventory, crafting, quest state machine)
+- [ ] **Integration tests**: Automated gameplay scenarios — start game, mine block, craft item, talk to NPC, defeat agent
+- [ ] **Performance benchmarks**: Automated FPS measurement, memory usage tracking, draw call counting
+- [ ] **Error handling**: All external inputs validated, graceful degradation on unsupported features
+- [ ] **Logging**: Structured debug logging with verbosity levels, dumpable to file
+
+#### 29. Build & Deploy
+- [ ] **Bundler**: Vite or esbuild for production builds (code splitting, tree shaking, minification)
+- [ ] **Dev server**: Vite dev server with HMR for rapid iteration
+- [ ] **CI/CD**: GitHub Actions for automated testing on PR, deploy to GitHub Pages or Netlify
+- [ ] **PWA**: Service worker for offline play, install prompt, asset caching
+- [ ] **WebGL fallback**: WebGL1 support for older devices, auto-detect and degrade gracefully
+- [ ] **CDN versioning**: Three.js version pinned with integrity hash for security and reproducibility
+
+#### 30. Modding & Extensibility
+- [ ] **Data-driven blocks**: Block types loaded from JSON, not hardcoded
+- [ ] **Recipe pack format**: JSON recipe definitions, loadable at runtime
+- [ ] **Scripting API**: Limited JavaScript API for mods to hook into game events
+- [ ] **Custom block textures**: Users can provide their own texture images
+- [ ] **World save export/import**: Download world as .iw file, share with others
 
 ---
 
@@ -333,125 +471,86 @@ Recover the Island Chart from the Cartographer by restoring the waystones. Decid
 - QA framework: 61 self-tests
 
 ### Session 2 (Bug Fixes)
-- **Music loop cuts**: Added timeupdate fade at loop boundary (later removed — caused empty space)
-- **Tunneling through ground**: Added swept vertical collision check
-- **Fullscreen black bar**: Added resize handler + CSS object-fit
-- **Hand visibility**: Repositioned higher, camera added to scene for rendering
-- **Butterfly/firefly sprite placement**: Cross-plane sprites instead of solid blocks
-- **Jump velocity**: Reduced from 17 to 14
-- **Settings split**: Separate Music Volume and SFX Volume sliders
-- **Dialogue keyboard**: Number keys + Enter select choices without unlocking cursor
-- **Celestial bodies**: fog:false, depthTest restored, offset 180, sunDist 200
-- **Camera pitch**: Widened to -1.55..1.55 for near-full vertical look
-- **Mining sound**: Removed retro square wave
-- **Torch model**: Cross-plane sprite with held light
-- **Torch illumination**: PointLight on held torch, toggled in updateHandItem
-- **Creature damage**: Removed type==='monster' restriction, all agents hittable
-- **Firefly illumination**: Increased to 4.5 intensity, range 16
-- **Arm redesign**: Bottom corners, smaller, pointing upward, depthTest removed
+- Music loop cuts: timeupdate fade
+- Tunneling through ground: swept collision
+- Fullscreen black bar: resize handler + CSS
+- Hand visibility: repositioned, camera added to scene
+- Butterfly/firefly placement: cross-plane sprites
+- Jump velocity: reduced from 17 to 14
+- Settings split: Music/SFX volume sliders
+- Dialogue keyboard: number keys + Enter
+- Celestial bodies: fog:false, depthTest, offset 180
+- Camera pitch: widened to -1.55..1.55
+- Mining sound: removed retro square wave
+- Torch: cross-plane sprite model + PointLight
+- Creature damage: all agents hittable
+- Firefly illumination: increased intensity/range
+- Arm redesign: bottom corners, smaller, pointing upward, depthTest removed
 
 ### Session 3 (Enhancement Prompt Pass)
-Worked through the "Priority Issues to Fix" list from the enhancement prompt above. All changes verified against the embedded `?test` suite (now 83 self-tests, all passing) via the new headless runner `tests/run-selftest.js`.
-
-- **#1 Hands** — enlarged arm/hand geometry and set `depthTest:false` so they never clip into world geometry.
-- **#2 Third person** — added `buildPlayerModel()` and a `V` toggle; camera orbits behind/above the player, hands hide, the avatar holds the selected item.
-- **#3 Reliable hits** — `raycast()` refreshes agent world matrices; combat reach widened to 6 blocks.
-- **#4 Torch light** — placed torches emit a warm `PointLight`.
-- **#5 Celestial** — additive sun-glow sprite plus a 2000-point starfield that fades in at night.
-- **#7 Water** — sin-based vertex wave animation (`updateWater`) with stored base positions.
-- **#9 Combat depth** — swing cooldown (mining blocked mid-swing), knockback, floating damage numbers, shrink-then-burst death FX.
-- **#10 Survival** — hunger drains ~3× faster, 5 edible foods + potions (right-click to consume), freezing (<20°) slows movement 20% and damages, placed torches restore warmth within 3 blocks.
-- **#11 Crafting** — 27 recipes including pickaxes/axes/armor/food/potions, plus recipe discovery toasts (basics known from the start).
-- **#12 Inventory** — `Q` drops the selected stack, shift-click moves items between bag and hotbar, an auto-sort button, stack counts in hotbar slots.
-- **#13 Tool tiers** — per-tool mining-speed multipliers (hand 1× → iron 4×) and tier-scaled weapon damage.
-- **#14 Sound** — filtered-noise footsteps (gait-timed), water-crossing splash, rising item-pickup tone, softer chipping mine sound.
-- **#15 Monster AI** — IDLE → CHASING → ATTACKING → FLEEING state machine; chase, contact-damage, and flee at low HP.
-- **#17 Save/load** — full session snapshot (inventory, hotbar, meters, quests, placed foliage, discoveries, position) with 30s autosave and load-on-init.
-- **#18 Loading screen** — fullscreen overlay with a progress bar shown during world generation, fades out on first frame.
-- **#19 Tunneling** — second-pass downward ground clamp when `velY < -20`.
-- **#20 Dialogue** — choice buttons expose `data-key` and highlight when their number key is pressed.
-
-Not changed: #6 (sky is already a dynamic day/night gradient; starfield added on top), #8 (crosshair already present), #16 (chunk rebuild already boundary-gated), #21 (kept HTMLAudioElement music loops to preserve the locked CC0 self-tests).
+- Enlarged arm/hand geometry, depthTest:false
+- Third-person player model, V key toggle
+- Reliable hits: matrix refresh, 6-block reach
+- Torch light on placed torches
+- Sun glow sprite, 2000-point starfield
+- Sin-wave water animation
+- Swing cooldown, knockback, damage numbers, death FX
+- 3x faster hunger, 5 foods + potions, freezing slows
+- 27 recipes + recipe discovery toasts
+- Q drop, shift-click move, auto-sort, stack counts
+- Tool-tier mining multipliers + damage
+- Footstep/splash/pickup SFX
+- Monster AI state machine
+- Full save/load with autosave
+- Loading screen with progress bar
+- Anti-tunneling second pass
+- Keyboard-friendly dialogue
 
 ### Session 4 — `v0.4.0` "Archipelago Update"
-A player-feedback pass. The self-test suite grew from 83 to **96 tests** (all passing via `tests/run-selftest.js`).
+- Version surfaced in menu + HUD badge
+- Viewmodel layer rendering (depth-cleared overlay pass)
+- Blocky Hytale-style arm rig (5 parts per arm)
+- Humanoid avatar with neck/shoulders/jointed limbs
+- Block textures with depth: gradient, grain, bevel, ambient occlusion
+- Cleaner menu: New Game / Continue / Settings / Field Notes
+- Save/spawn fixes: ground clamp, anti-bury, void catch
+- Journal moved to inventory (Tab) popup
+- RPG-style quests with locked/active/done states
+- 20-minute day/night cycle
+- Archipelago world: 5 islands, island-specific terrain falloff
 
-- **Version surfaced** — `GAME_VERSION`/`GAME_VERSION_NAME` constants render in the main menu and a persistent top-right HUD badge, so you always know which build you're on.
-- **Arms no longer see-through** — the first-person hands render on a dedicated viewmodel layer (`VIEWMODEL_LAYER = 1`) in a second pass with a cleared depth buffer (`renderFrame()`), so grass, flowers, butterflies, and other transparent world geometry can never bleed through the arms.
-- **Better, wider hands** — the first-person rig was rebuilt as a blocky Minecraft/Hytale-style arm (sleeve + cuff + forearm + hand + thumb), spread further toward the screen corners so the hands no longer crowd the center.
-- **More humanoid avatar** — `humanoid()` now has a neck, shoulders, shoulder-pivoting arms with hands, and hip-pivoting legs with feet. Limbs swing from their joints. The third-person avatar raises its right arm to present the held tool. (NPCs benefit too.)
-- **Textures with depth** — `drawBlockTexture()` adds a top-to-bottom light gradient, denser grain, and a new `applyBlockDepth()` pass (top/left bevel highlight, bottom/right shadow, radial ambient-occlusion) for chunky, sculpted blocks.
-- **Cleaner menu** — main menu is **New Game / Create World**, **Continue** (disabled when no save), **Settings**, **Field Notes**. The settings sliders no longer sit under the menu — they live only behind the Settings button. Settings gained an **Autosave toggle** and a **Save Now** button.
-- **Save/spawn fixes** — `saveGame()` clamps the stored Y to the surface, Continue/load snaps you above ground, `isBuried()` lifts a player embedded in terrain back to the surface each frame, and a void-catch returns you to solid ground if you fall off the world. No more spawning underground or falling through the map.
-- **Journal moved to the Tab popup** — the always-on journal HUD panel is gone; quests render inside the inventory (Tab) overlay.
-- **RPG-style quests** — quests now have `locked → active → done` states. You start with a single objective and **pick up** the rest along the story (talking to the Cartographer unlocks the waystone/exploration/crafting/animal lines; waking a Hollowling unlocks the combat line; reaching a satellite island completes "Cross the open water"). No more wall of simple chores.
-- **Minecraft-length day/night** — `DAY_CYCLE_SPEED = 1/1200` → a full cycle is ~20 real minutes.
-- **Multiple islands** — the world is now an **archipelago**: the main Survey Isle plus four satellite islands (`ISLANDS[]`) separated by swimmable sea, bounded by `WORLD_EXTENT`. `islandFalloff()` drives terrain, foliage, and ruins for every island; a third "Tide Waystone" waits on a far island to reward exploration.
-
----
-
-## Recommended Addons & Updates
-
-A prioritized backlog of high-impact additions for future sessions. Items are grouped and ordered roughly by player-experience value vs. implementation cost.
-
-### Tier 1 — Highest impact, low/medium effort
-1. **Inter-island bridges & boats** — the archipelago is swimmable, but a craftable raft/boat (faster than swimming, holds Temp) or buildable rope bridges would make island-hopping feel intentional. Hook into the existing crafting `RECIPES` and `placeSelected()`.
-2. **Per-island biomes & palettes** — give each `ISLANDS[]` entry a biome tag (ember/ash, mirror/ice, amber/desert, lush) that shifts `biomeType()` weighting and ambient foliage color, so each island reads as a distinct place.
-3. **Quest markers / compass** — a HUD compass strip or floating waypoint diamonds toward the current active quest's target (Cartographer, nearest unrestored waystone, unexplored island). Builds on the RPG quest state machine.
-4. **Sleep / time-skip at night** — with the longer 20-minute cycle, a "rest" interaction (e.g., near a placed torch or a bedroll item) to skip to dawn. Pairs well with night being more dangerous.
-5. **Minimap** — a small top-down canvas of nearby chunks + island outlines + agent dots, toggled with `M`-adjacent key.
-
-### Tier 2 — Depth & systems
-6. **Caves & ores underground** — current terrain is surface-only; add 3D noise carving and ore distribution by depth, giving mining real progression and a reason for tool tiers.
-7. **Hunger → health loop & cooking** — starvation damage, a campfire/furnace block to cook raw food into higher-saturation meals.
-8. **Equipment & armor slots** — the crafting list already has armor pieces; add an equip UI and damage reduction.
-9. **More creatures + taming** — additional animals with simple behaviors; let trusted animals follow the player.
-10. **Structures worth exploring** — loot in ruins (chests with items), more ruin variety, a "dungeon" on one satellite island guarding the Tide Waystone.
-
-### Tier 3 — Polish & platform
-11. **Mobile / touch controls** — virtual joystick + tap-to-mine for phones/tablets.
-12. **IndexedDB saves + multiple save slots** — localStorage is fine now, but slots and larger world state want IndexedDB.
-13. **Spatial audio** — position SFX in 3D (`PannerNode`) for waterfalls, fireflies, monsters.
-14. **Settings: FOV, brightness, render scale** — more graphics knobs alongside render distance.
-15. **Accessibility** — colorblind-safe meters, remappable keys, subtitle toggle for dialogue.
-
-### Engine / tech-debt notes
-- The first-person viewmodel uses a two-pass layered render (`renderFrame()`); if more overlay UI-in-world elements are added, consider a dedicated overlay scene + camera instead.
-- `WORLD_EXTENT` bounds the playable disk; pushing islands farther will need a larger void floor and on-demand water-mesh streaming budget.
-- Chunk generation is single-threaded on the main thread — a Web Worker mesher would remove hitches when crossing into freshly generated island chunks.
+### Session 5 — `v0.5.0` "Boss & Survival Update"
+- The Hollow Surveyor boss (3-phase, arena, shockwave/charge/teleport/slam attacks)
+- Surveyor Echo minion summons
+- Boss arena ring + pillars
+- Death/respawn system with item drop penalty
+- `spawnPoint()` function (was missing, fixed crash on death/load)
+- hp guard in save loading (clamp to 1)
+- `spawnDroppedItem` argument order fix in respawn
+- `renderFrame()` try/finally guard for state restoration
+- Version updated to v0.5.0
 
 ---
 
 ## Testing
 
 ### Manual QA
-Open the game with `?test` URL parameter to run the embedded self-test suite. Results appear in a green/red panel.
+Open the game with `?test` URL parameter to run the embedded self-test suite (104 tests). Results appear in a green/red panel.
 
 ### Headless self-test runner
-`tests/run-selftest.js` loads the game with `?test` in headless Chrome and prints the pass/fail summary (exits non-zero on any failure or JS error):
-
 ```bash
-npm install puppeteer-core
-node tests/run-selftest.js                       # uses local inner-wilds-game.html
+# Requires puppeteer-core
+node tests/run-selftest.js
 CHROME_PATH=/path/to/chrome node tests/run-selftest.js
 ```
 
-Headless WebGL requires SwiftShader; the runner already passes `--use-angle=swiftshader --use-gl=angle --enable-unsafe-swiftshader`.
-
 ### Automated Playthrough
 ```bash
-GAME_URL="http://127.0.0.1:8080/inner-wilds-game.html" \
-PLAYWRIGHT_BROWSERS_PATH="/nix/store/.../playwright-browsers" \
-node tests/test-auto-play.js
+GAME_URL="http://127.0.0.1:8080/inner-wilds-game.html" node tests/test-auto-play.js
 ```
-
-The playthrough script walks through the game automatically: starts game, moves around, mines, places, crafts, interacts with NPCs, and catches creatures. Exits with code 0 on success.
 
 ### Writing Tests
-Add test functions to the `?test` block in `inner-wilds-game.html`. Each test calls `check(label, condition)` and results are aggregated. Pattern:
-```js
-check('Description of what is tested', someCondition === expectedValue);
-```
+Add tests to the `?test` block in the HTML file. Each test calls `check(label, condition)`.
 
 ---
 
@@ -464,8 +563,8 @@ inner-wilds-game/
 ├── README.md                     # This file
 ├── .gitignore
 └── tests/
-    ├── README.md                 # Test setup documentation
-    ├── run-selftest.js           # Headless ?test self-test runner (puppeteer-core)
+    ├── README.md
+    ├── run-selftest.js           # Headless ?test runner (puppeteer-core)
     ├── test-qa-visual.js         # QA visual test runner
     ├── test-auto-play.js         # HTTP playthrough script
     ├── test-auto.js              # Utility for auto tests
