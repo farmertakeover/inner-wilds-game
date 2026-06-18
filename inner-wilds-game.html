@@ -889,18 +889,21 @@ function updateBreakOverlay(pos,pct){
 
 function hideBreakOverlay(){if(breakOverlay)breakOverlay.visible=false}
 
-// Layer 1 is the first-person viewmodel overlay; it is rendered in a second
-// pass with a cleared depth buffer so the arms never show world geometry
-// (grass, flowers, butterflies, etc.) bleeding through them.
+// Layer 1 is the first-person viewmodel layer. The viewmodel renders in the
+// single main pass with depthTest:false / depthWrite:false and a high
+// renderOrder, so the arms always sit on top of the world without a second
+// overlay pass (which previously caused ghosted/duplicate limbs on some GPUs).
 const VIEWMODEL_LAYER=1;
-function setViewmodelLayer(obj){obj.traverse(o=>o.layers.set(VIEWMODEL_LAYER))}
+// depthTest:false + depthWrite:false makes a material draw over everything; we
+// stamp this onto every viewmodel material so the arms/held item never clip.
+function makeViewmodelMaterial(mat){mat.depthTest=false;mat.depthWrite=false;mat.transparent=false;return mat}
+function setViewmodelLayer(obj){obj.traverse(o=>{o.layers.set(VIEWMODEL_LAYER);o.renderOrder=900;if(o.material)makeViewmodelMaterial(o.material)})}
 function buildFirstPersonHands(){
-  const group=new THREE.Group();group.visible=false;group.position.set(0,-.46,-.58);group.scale.setScalar(.82);
-  const skin=new THREE.MeshStandardMaterial({color:0xe0b48a,roughness:.7});
-  const skinShade=new THREE.MeshStandardMaterial({color:0xcf9f73,roughness:.74});
-  const sleeve=new THREE.MeshStandardMaterial({color:0x36606b,roughness:.82,emissive:0x06121a,emissiveIntensity:.5});
-  const cuff=new THREE.MeshStandardMaterial({color:0x274750,roughness:.8});
-  // A blocky, Minecraft/Hytale-style arm: upper sleeve, forearm, hand, thumb.
+  const group=new THREE.Group();group.visible=false;group.position.set(0,-.46,-.58);group.scale.setScalar(.82);group.renderOrder=900;
+  const skin=makeViewmodelMaterial(new THREE.MeshStandardMaterial({color:0xe0b48a,roughness:.7}));
+  const skinShade=makeViewmodelMaterial(new THREE.MeshStandardMaterial({color:0xcf9f73,roughness:.74}));
+  const sleeve=makeViewmodelMaterial(new THREE.MeshStandardMaterial({color:0x36606b,roughness:.82,emissive:0x06121a,emissiveIntensity:.5}));
+  const cuff=makeViewmodelMaterial(new THREE.MeshStandardMaterial({color:0x274750,roughness:.8}));
   // A blocky arm built as one straight, slightly forward-tilted limb. The whole
   // root carries the only rotation so the parts stay aligned (no crooked wrist).
   const addHand=side=>{
@@ -4243,9 +4246,11 @@ if(new URLSearchParams(location.search).has('test')){
       // --- Enhancement coverage ---
       {
         const arm=handRig?.left?.children?.find(m=>m.geometry?.parameters?.width!==undefined);
-        // Hands now draw on top via a dedicated viewmodel layer + overlay pass.
-        const onOverlayLayer=handRig?.left?.children?.every(m=>m.layers.isEnabled(VIEWMODEL_LAYER))&&handRig?.itemBox?.layers.isEnabled(VIEWMODEL_LAYER);
-        check('First-person hands enlarged and draw on top',(arm?.geometry.parameters.width||0)>=.15&&onOverlayLayer);
+        // Hands draw on top in a single pass via depthTest:false viewmodel materials.
+        const onLayer=handRig?.left?.children?.every(m=>m.layers.isEnabled(VIEWMODEL_LAYER))&&handRig?.itemBox?.layers.isEnabled(VIEWMODEL_LAYER);
+        const drawsOnTop=handRig?.left?.children?.every(m=>m.material.depthTest===false&&m.material.depthWrite===false);
+        const singlePass=!String(renderFrame).includes('clearDepth');
+        check('First-person hands enlarged and draw on top',(arm?.geometry.parameters.width||0)>=.15&&onLayer&&drawsOnTop&&singlePass);
       }
       check('Combat raycast refreshes agent world matrices',String(raycast).includes('updateMatrixWorld'));
       {
