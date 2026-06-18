@@ -136,6 +136,15 @@ canvas{display:block}
 .qa-results .pass{color:#9ff3d6}
 .qa-results .fail{color:#ff9dae}
 .weapon-display{position:absolute;right:20px;bottom:80px;pointer-events:none}
+.death-screen{position:fixed;inset:0;display:grid;place-items:center;padding:16px;z-index:60;pointer-events:auto;background:radial-gradient(circle at 50% 40%,rgba(120,10,20,.32),rgba(4,3,6,.92) 62%);animation:deathIn .6s ease both}
+.death-screen[hidden]{display:none}
+@keyframes deathIn{0%{opacity:0}100%{opacity:1}}
+.death-card{width:min(460px,calc(100vw - 32px));text-align:center;padding:30px 28px;border-radius:18px 6px 18px 6px;border:1px solid rgba(217,125,141,.5)}
+.death-card h2{margin:0 0 10px;color:#ff8a9b;font-family:Georgia,serif;font-size:clamp(2rem,6vw,3.4rem);text-shadow:0 0 24px rgba(217,40,60,.5)}
+.death-card p{margin:0 0 8px;color:var(--muted);line-height:1.5}
+.death-card .death-hint{color:var(--gold);font-size:.85rem;margin-bottom:18px}
+.death-card button{border:1px solid rgba(242,201,109,.45);border-radius:999px;padding:11px 20px;color:#201408;background:linear-gradient(180deg,#ffe3a4,#d99750);box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:700}
+.death-card button:hover{filter:brightness(1.1)}
 @media(max-width:860px){.top{grid-template-columns:1fr}.journal{top:auto;bottom:80px}.start-grid{grid-template-columns:1fr}.controls{display:none}.crafting-body{grid-template-columns:1fr}.crafting-grid{grid-template-columns:repeat(3,1fr)}.crafting-grid .slot{width:100%}}
 @media(max-width:600px){.brand p,.journal{display:none}}
 </style>
@@ -218,6 +227,14 @@ canvas{display:block}
   </section>
   <div class="toast-stack" id="toasts" aria-live="polite"></div>
   <div class="version-badge" id="versionBadge"></div>
+  <section class="death-screen" id="deathScreen" role="dialog" aria-modal="true" aria-labelledby="deathTitle" hidden>
+    <div class="death-card glass">
+      <h2 id="deathTitle">You Died</h2>
+      <p id="deathReason">The island reclaims what it lends.</p>
+      <p class="death-hint">You dropped your belongings where you fell. Hurry back to reclaim them.</p>
+      <button id="respawnBtn" type="button">Respawn at the campfire</button>
+    </div>
+  </section>
 </div>
 <div class="start" id="start">
   <section class="start-card glass">
@@ -884,13 +901,16 @@ function buildFirstPersonHands(){
   const sleeve=new THREE.MeshStandardMaterial({color:0x36606b,roughness:.82,emissive:0x06121a,emissiveIntensity:.5});
   const cuff=new THREE.MeshStandardMaterial({color:0x274750,roughness:.8});
   // A blocky, Minecraft/Hytale-style arm: upper sleeve, forearm, hand, thumb.
+  // A blocky arm built as one straight, slightly forward-tilted limb. The whole
+  // root carries the only rotation so the parts stay aligned (no crooked wrist).
   const addHand=side=>{
-    const root=new THREE.Group();root.position.set(side*.34,.02,0);root.rotation.z=side*.05;
-    const upper=new THREE.Mesh(new THREE.BoxGeometry(.17,.17,.34),sleeve);upper.position.set(0,.05,.06);upper.rotation.x=.62;root.add(upper);
-    const band=new THREE.Mesh(new THREE.BoxGeometry(.185,.06,.185),cuff);band.position.set(0,-.04,-.07);band.rotation.x=.62;root.add(band);
-    const fore=new THREE.Mesh(new THREE.BoxGeometry(.155,.155,.26),skin);fore.position.set(0,-.07,-.12);fore.rotation.x=.46;root.add(fore);
-    const hand=new THREE.Mesh(new THREE.BoxGeometry(.17,.12,.2),skin);hand.position.set(0,-.13,-.24);hand.rotation.x=.3;root.add(hand);
-    const thumb=new THREE.Mesh(new THREE.BoxGeometry(.05,.05,.1),skinShade);thumb.position.set(-side*.085,-.11,-.24);thumb.rotation.x=.3;root.add(thumb);
+    const root=new THREE.Group();root.position.set(side*.34,.02,0);
+    root.rotation.x=.42; // single uniform forward tilt for the whole arm
+    const upper=new THREE.Mesh(new THREE.BoxGeometry(.17,.17,.34),sleeve);upper.position.set(0,0,.04);root.add(upper);
+    const band=new THREE.Mesh(new THREE.BoxGeometry(.185,.07,.185),cuff);band.position.set(0,0,-.13);root.add(band);
+    const fore=new THREE.Mesh(new THREE.BoxGeometry(.155,.155,.26),skin);fore.position.set(0,0,-.26);root.add(fore);
+    const hand=new THREE.Mesh(new THREE.BoxGeometry(.17,.13,.2),skin);hand.position.set(0,0,-.46);root.add(hand);
+    const thumb=new THREE.Mesh(new THREE.BoxGeometry(.05,.05,.11),skinShade);thumb.position.set(-side*.09,.02,-.45);root.add(thumb);
     group.add(root);return root;
   };
   // Held item mesh (shown in right hand)
@@ -1300,6 +1320,7 @@ const player={
   waystones:new Set(),
   discovered:new Set(),
   monstersRepelled:0,
+  dead:false,
 };
 
 // RPG-style quest log. Quests carry a state (locked → active → done). Only one
@@ -1364,6 +1385,7 @@ const ui={
   sortInventory:document.getElementById('sortInventory'),
   qaPanel:document.getElementById('qaPanel'),
   loading:document.getElementById('loading'),loadingFill:document.getElementById('loadingFill'),loadingLabel:document.getElementById('loadingLabel'),
+  deathScreen:document.getElementById('deathScreen'),deathReason:document.getElementById('deathReason'),respawnBtn:document.getElementById('respawnBtn'),
 };
 
 function setLoadingProgress(pct,label){
@@ -2770,6 +2792,7 @@ window.addEventListener('keydown',e=>{
     if(k==='e')interact();
   }
   if(k==='f'){player.noise=Math.max(0,player.noise-18);player.resolve=Math.min(100,player.resolve+8);showDialogue('Breath','The island goes quiet enough to hear the blocks settle.',[{label:'Good',action:hideDialogue}])}
+  if(player.dead){if(k==='enter'||k==='r')respawn();return}
   if(k===' '||k==='spacebar')tryJump();
   if(k==='c'){showCrafting=!showCrafting;ui.craftingPanel.classList.toggle('open',showCrafting);if(showCrafting){renderCrafting();exitGamePointerLock()}else if(state.started&&!ui.notes.classList.contains('open'))requestGamePointerLock()}
   if(k==='m')openMainMenu();
@@ -3365,6 +3388,8 @@ function setAutosave(on){
 function defaultPlayerState(){
   player.velY=0;player.hp=100;player.resolve=100;player.noise=0;player.hunger=100;player.temperature=85;
   player.boating=false;
+  player.dead=false;
+  if(ui.deathScreen)ui.deathScreen.hidden=true;
   player.inventory={1:0,2:0,3:0,4:0,9:0,10:0,11:0,12:0};
   player.selectedSlot=0;player.hotbar=[1,2,3,4,9,10,0,0,0];
   player.trusted=new Set();player.talked=new Set();player.waystones=new Set();player.discovered=new Set();player.monstersRepelled=0;
@@ -3398,6 +3423,7 @@ function continueGame(){
 
 ui.newGameBtn.addEventListener('click',newGame);
 ui.continueBtn.addEventListener('click',continueGame);
+if(ui.respawnBtn)ui.respawnBtn.addEventListener('click',respawn);
 ui.saveSlots.addEventListener('click',e=>{
   const btn=e.target.closest('button');if(!btn)return;
   const slot=Number(btn.dataset.slot),act=btn.dataset.act;
@@ -3474,9 +3500,11 @@ let footTimer = 0;
 function jumpHeld(){return keys.has(' ')||keys.has('spacebar')}
 
 function tryJump(inWater=isPlayerInWater()){
+  if(player.dead)return false;
   const canJump=player.grounded||inWater||coyoteTime>0;
   if(!canJump)return false;
-   player.velY=inWater?8:14;
+  // Stronger jump restores the better game feel (was nerfed 17 -> 14).
+  player.velY=inWater?8:17;
   player.grounded=false;
   coyoteTime=0;
   return true;
@@ -3691,21 +3719,43 @@ function spawnPoint(){
   const y=groundYAt(0,0)||BLOCK*6;
   return {x:0,y:y,z:0};
 }
+
+// Mark the player dead: freeze input, release the pointer, drop everything as
+// a death penalty, and show the "You Died" screen until the player respawns.
+function killPlayer(reason='The island reclaims what it lends.'){
+  if(player.dead)return;
+  player.dead=true;
+  player.hp=0;player.primaryHeld=false;player.mining=null;
+  resetMining();
+  // Drop the entire inventory + hotbar at the death site.
+  let dropped=0;
+  const at=player.pos.clone().add(new THREE.Vector3(0,BLOCK*.6,0));
+  for(const t in player.inventory){
+    const amt=player.inventory[t];
+    if(amt>0){spawnDroppedItem(Number(t),amt,at.clone().add(new THREE.Vector3((Math.random()-.5)*BLOCK,0,(Math.random()-.5)*BLOCK)),{velocity:null});dropped++}
+    player.inventory[t]=0;
+  }
+  player.hotbar=[0,0,0,0,0,0,0,0,0];
+  spawnParticle(at,0xd92840,40,6);
+  renderQuickbar();
+  if(ui.deathReason)ui.deathReason.textContent=reason;
+  if(ui.deathScreen)ui.deathScreen.hidden=false;
+  exitGamePointerLock();
+  if(typeof playNoiseBurst==='function')playNoiseBurst(0.8,0.5,'lowpass',220,1);
+}
+
 function respawn(){
   const spawn=spawnPoint();
   player.pos.set(spawn.x+BLOCK*.5,spawn.y+BLOCK*1.5,spawn.z+BLOCK*.5);
   player.velY=0;player.grounded=false;
-  player.hp=50;player.hunger=40;player.temperature=70;player.resolve=30;
+  player.hp=60;player.hunger=45;player.temperature=72;player.resolve=35;
   player.airTime=0;coyoteTime=0;
-  if(typeof toast==='function')toast('You have died and been reborn at the campfire.');
-  // Drop some items as death penalty
-  const losses=[];
-  for(const t in player.inventory){
-    if(player.inventory[t]<=0)continue;
-    const drop=Math.ceil(player.inventory[t]*.25);
-    if(drop>0){spawnDroppedItem(Number(t),drop,player.pos.clone().add(new THREE.Vector3(0,BLOCK*.5,0)));losses.push(t)}
-  }
-  if(losses.length>0&&typeof toast==='function')toast('Lost '+(losses.length>1?'some items':'1 item type')+' upon death.');
+  player.dead=false;
+  if(ui.deathScreen)ui.deathScreen.hidden=true;
+  updateMeters();
+  renderQuickbar();
+  if(state.started)requestGamePointerLock();
+  if(typeof toast==='function')toast('You wake at the campfire. Your belongings wait where you fell.');
 }
 
 function updateSurvival(dt){
@@ -3775,9 +3825,11 @@ function animate(){
   
   if(inGameplay){
     if(player.swingCooldown>0)player.swingCooldown=Math.max(0,player.swingCooldown-dt);
-    updatePlayer(dt);
-    updateSurvival(dt);
-    if(player.hp<=0)respawn();
+    if(!player.dead){
+      updatePlayer(dt);
+      updateSurvival(dt);
+      if(player.hp<=0)killPlayer();
+    }
     updateCamera();
     updateMining(dt);
     updateAgents(dt);
@@ -3815,26 +3867,14 @@ function animate(){
   renderFrame();
 }
 
-// Render the full scene, then (in first person) redraw just the hands on a
-// cleared depth buffer so nothing in the world can bleed through the arms.
+// Single-pass render. The first-person viewmodel (arms + held item) draws with
+// depthWrite:false and a high renderOrder so it always sits on top of the world
+// without a second overlay pass, which previously caused ghosted/duplicate limbs
+// on some GPU/driver combinations. The camera renders both layer 0 and the
+// viewmodel layer together.
 function renderFrame(){
-  camera.layers.set(0);
+  camera.layers.enable(VIEWMODEL_LAYER);
   renderer.render(scene,camera);
-  const overlay=handRig&&handRig.group.visible&&!thirdPerson;
-  if(overlay){
-    const bg=scene.background;
-    try{
-      scene.background=null;
-      renderer.autoClear=false;
-      renderer.clearDepth();
-      camera.layers.set(VIEWMODEL_LAYER);
-      renderer.render(scene,camera);
-    }finally{
-      renderer.autoClear=true;
-      scene.background=bg;
-      camera.layers.set(0);
-    }
-  }
 }
 
 // ============================================================
