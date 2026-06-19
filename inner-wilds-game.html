@@ -64,7 +64,7 @@ canvas{display:block}
 .toast-stack{position:absolute;left:50%;top:88px;display:grid;gap:6px;width:min(480px,calc(100vw - 24px));transform:translateX(-50%)}
 .toast{padding:8px 10px;border:1px solid rgba(121,216,200,.25);border-radius:12px;color:var(--ink);background:rgba(11,18,26,.85);box-shadow:0 10px 28px rgba(0,0,0,.25);font-size:.85rem;text-align:center;opacity:0;animation:toastIn 4s ease forwards}
 @keyframes toastIn{0%{opacity:0;transform:translateY(-10px)}10%,85%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-10px)}}
-.pickup-feed{position:absolute;right:12px;top:96px;display:grid;gap:6px;width:min(278px,calc(100vw - 24px));pointer-events:none}.pickup-entry{display:grid;grid-template-columns:36px 1fr;gap:8px;align-items:center;padding:7px 9px;border:1px solid rgba(121,216,200,.25);border-radius:12px;color:var(--ink);background:linear-gradient(135deg,rgba(14,20,28,.86),rgba(39,28,56,.66));box-shadow:0 10px 30px rgba(0,0,0,.28);font-size:.78rem;animation:pickupIn 3.4s ease forwards}.pickup-entry strong{display:block;color:var(--gold);font-size:.82rem}.pickup-entry span{color:var(--muted)}@keyframes pickupIn{0%{opacity:0;transform:translateX(12px)}10%,82%{opacity:1;transform:translateX(0)}100%{opacity:0;transform:translateX(12px)}}
+.pickup-feed{position:absolute;left:12px;top:96px;display:grid;gap:6px;width:min(278px,calc(100vw - 24px));pointer-events:none}.pickup-entry{display:grid;grid-template-columns:36px 1fr;gap:8px;align-items:center;padding:7px 9px;border:1px solid rgba(121,216,200,.25);border-radius:12px;color:var(--ink);background:linear-gradient(135deg,rgba(14,20,28,.86),rgba(39,28,56,.66));box-shadow:0 10px 30px rgba(0,0,0,.28);font-size:.78rem;animation:pickupIn 3.4s ease forwards}.pickup-entry strong{display:block;color:var(--gold);font-size:.82rem}.pickup-entry span{color:var(--muted)}@keyframes pickupIn{0%{opacity:0;transform:translateX(-12px)}10%,82%{opacity:1;transform:translateX(0)}100%{opacity:0;transform:translateX(-12px)}}
 .boss-health{position:absolute;left:50%;top:14px;width:min(560px,calc(100vw - 92px));padding:10px 12px;border-radius:6px 18px 6px 18px;transform:translateX(-50%)}.boss-health[hidden]{display:none}.boss-health-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:6px;color:var(--gold);font-family:Georgia,serif;font-size:.9rem}.boss-health-head span:last-child{color:var(--teal);font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}.boss-health-track{position:relative;height:12px;overflow:hidden;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.06)}.boss-health-track span{position:absolute;inset:0 auto 0 0;width:100%;border-radius:inherit;background:linear-gradient(90deg,#ff7b6b,#f2c96d,#79d8c8);box-shadow:0 0 20px rgba(121,216,200,.35);transition:width .16s}.boss-phase-ticks{position:absolute;inset:0;pointer-events:none}.boss-phase-ticks i{position:absolute;top:-2px;width:2px;height:16px;background:rgba(8,11,18,.9);box-shadow:0 0 0 1px rgba(242,201,109,.35)}.boss-phase-ticks i:nth-child(1){left:33.333%}.boss-phase-ticks i:nth-child(2){left:66.666%}
 .save-feedback{position:absolute;right:12px;top:48px;max-width:min(320px,calc(100vw - 24px));padding:9px 12px;border-radius:12px;color:var(--ink);font-size:.78rem;line-height:1.3;opacity:0;transform:translateY(-8px);transition:opacity .2s,transform .2s}.save-feedback.show{opacity:1;transform:translateY(0)}.save-feedback[hidden]{display:none}.save-feedback strong{display:block;color:var(--teal)}
 .dev-stats{position:absolute;right:12px;bottom:78px;min-width:190px;padding:8px 10px;border-radius:10px;color:var(--muted);font:600 .68rem/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}.dev-stats[hidden]{display:none}.dev-stats strong{display:block;margin-bottom:3px;color:var(--teal);font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}.dev-stats b{color:var(--gold);font-weight:700}
@@ -153,7 +153,7 @@ canvas{display:block}
 .death-card button{border:1px solid rgba(242,201,109,.45);border-radius:999px;padding:11px 20px;color:#201408;background:linear-gradient(180deg,#ffe3a4,#d99750);box-shadow:0 6px 20px rgba(0,0,0,.35);font-weight:700}
 .death-card button:hover{filter:brightness(1.1)}
 .fps{position:absolute;right:12px;top:48px;width:105px;padding:3px 8px;border-radius:8px;font:600 .72rem/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center;background:rgba(8,11,18,.55);pointer-events:none;z-index:6;transition:color .4s,opacity .25s}
-@media(max-width:860px){.top{grid-template-columns:1fr}.journal{top:auto;bottom:80px}.start-grid{grid-template-columns:1fr}.controls{display:none}.crafting-body{grid-template-columns:1fr}.crafting-grid{grid-template-columns:repeat(3,1fr)}.crafting-grid .slot{width:100%}.pickup-feed{top:82px;right:12px;width:min(278px,calc(100vw - 24px))}.boss-health{top:82px;width:min(520px,calc(100vw - 24px))}.context-prompt{bottom:122px}.dev-stats,.fps{display:none}}
+@media(max-width:860px){.top{grid-template-columns:1fr}.journal{top:auto;bottom:80px}.start-grid{grid-template-columns:1fr}.controls{display:none}.crafting-body{grid-template-columns:1fr}.crafting-grid{grid-template-columns:repeat(3,1fr)}.crafting-grid .slot{width:100%}.pickup-feed{top:82px;left:12px;width:min(278px,calc(100vw - 24px))}.boss-health{top:82px;width:min(520px,calc(100vw - 24px))}.context-prompt{bottom:122px}.dev-stats,.fps{display:none}}
 @media(max-width:600px){.brand p,.journal{display:none}}
 </style>
 </head>
@@ -699,7 +699,7 @@ function generateChunk(cx,cz){
       // Berry bushes: rare clusters on grassy terrain
       const berryChance=smoothNoise(gx*.23+17,gz*.23-31);
       if(berryChance>.82&&treeSeed<.7){
-        data[lx+lz*CHUNK_SIZE+(h+h+h+1)*CHUNK_SIZE*CHUNK_SIZE]=16;
+        data[lx+lz*CHUNK_SIZE+(h+1)*CHUNK_SIZE*CHUNK_SIZE]=16;
         if(Math.random()<.3)data[(lx+1)+(lz)*CHUNK_SIZE+(h+1)*CHUNK_SIZE*CHUNK_SIZE]=16;
         if(Math.random()<.3)data[(lx-1)+(lz)*CHUNK_SIZE+(h+1)*CHUNK_SIZE*CHUNK_SIZE]=16;
         if(Math.random()<.3)data[(lx)+(lz+1)*CHUNK_SIZE+(h+1)*CHUNK_SIZE*CHUNK_SIZE]=16;
@@ -1626,17 +1626,17 @@ function showSaveFeedback(slot=activeSaveSlot,ok=true){
 function updateHudFeedback(inGameplay=true){
   updateContextPrompt(inGameplay);
   updateBossHealthBar();
-  // Death compass UI
   const compass=ui.deathCompass;
   const held=player.hotbar[player.selectedSlot];
   if(compass&&held===81&&player.lastDeathPos){
     const to=player.lastDeathPos.clone().sub(player.pos);
     to.y=0;
-    const angle=Math.atan2(to.x,to.z);
     const dist=to.length();
+    const worldAngle=Math.atan2(to.x,to.z);
+    const screenAngle=worldAngle-yaw;
     const needle=compass.querySelector('.compass-needle');
     const distEl=compass.querySelector('.compass-dist');
-    if(needle)needle.style.transform=`rotate(${angle}rad)`;
+    if(needle)needle.style.transform=`rotate(${screenAngle}rad)`;
     if(distEl)distEl.textContent=dist>BLOCK*1000?`${(dist/BLOCK/1000).toFixed(1)}km`:`${Math.round(dist/BLOCK)}m`;
     compass.classList.add('show');compass.hidden=false;
   } else if(compass){
@@ -5028,6 +5028,7 @@ function killPlayer(reason='The island reclaims what it lends.'){
   if(player.dead)return;
   player.dead=true;
   player.lastDeathPos=player.pos.clone();
+  try{localStorage.setItem('iw_last_death',JSON.stringify([player.pos.x,player.pos.y,player.pos.z]))}catch(e){}
   player.hp=0;player.primaryHeld=false;player.mining=null;
   resetMining();
     // Drop the entire inventory exactly where the player died; respawn only moves
@@ -5325,6 +5326,7 @@ function saveGame(slot=activeSaveSlot,title=saveTitle(slot)){
       quests:quests.map(q=>({id:q.id,progress:q.progress,state:q.state})),
       placedFoliage:placedFoliage.map(f=>({p:[f.userData.blockPos.x,f.userData.blockPos.y,f.userData.blockPos.z],w:[f.position.x,f.position.y,f.position.z],r:f.rotation.y,t:f.userData.placedType})),
       blockEdits:serializeBlockEdits(),
+      lastDeathPos:player.lastDeathPos?[player.lastDeathPos.x,player.lastDeathPos.y,player.lastDeathPos.z]:null,
     };
     localStorage.setItem(saveSlotKey(slot),JSON.stringify(data));
     activeSaveSlot=slot;localStorage.setItem('iw_active_slot',String(slot));
@@ -5353,6 +5355,8 @@ function loadGame(slot=activeSaveSlot){
     if(Array.isArray(d.waystones))player.waystones=new Set(d.waystones);
     if(Array.isArray(d.trusted))player.trusted=new Set(d.trusted);
     if(Array.isArray(d.quests))d.quests.forEach(sq=>{const q=quests.find(x=>x.id===sq.id);if(q){if(typeof sq.progress==='number')q.progress=sq.progress;if(typeof sq.state==='string')q.state=sq.state}});
+    if(Array.isArray(d.lastDeathPos)&&d.lastDeathPos.length===3)player.lastDeathPos=new THREE.Vector3(d.lastDeathPos[0],d.lastDeathPos[1],d.lastDeathPos[2]);
+    else{try{const raw=localStorage.getItem('iw_last_death');if(raw){const arr=JSON.parse(raw);if(Array.isArray(arr)&&arr.length===3)player.lastDeathPos=new THREE.Vector3(arr[0],arr[1],arr[2])}}catch(e){}}
     loadBlockEdits(d.blockEdits);
     for(const key of chunks.keys()){
       const cx=key>>16,cz=(key<<16)>>16;
@@ -6046,8 +6050,8 @@ if(new URLSearchParams(location.search).has('test')){
       check('Block edits are journaled into saves',typeof blockEdits==='object'&&String(setBlock).includes('blockEdits.set')&&String(saveGame).includes('blockEdits:serializeBlockEdits')&&String(loadGame).includes('loadBlockEdits'));
       {
         const css=[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n');
-        const sideFeed=css.includes('.pickup-feed{position:absolute;right:12px;top:96px')&&!String(updateDroppedItems).includes('Picked up ');
-        check('Pickup notifications use right-side art feed only',sideFeed);
+        const sideFeed=css.includes('.pickup-feed{position:absolute;left:12px;top:96px')&&!String(updateDroppedItems).includes('Picked up ');
+        check('Pickup notifications use left-side art feed only',sideFeed);
       }
       {
         // Restored jump: stronger launch velocity (was nerfed to 14).
