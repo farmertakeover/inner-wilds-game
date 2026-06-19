@@ -1,6 +1,6 @@
 # Inner Wilds — 3D Voxel Survival/Adventure Game
 
-**Current version: `v0.10.0` — "Combat Readability"** (shown in main menu and top-right HUD badge).
+**Current version: `v0.14.0` — "Time Anomaly"** (shown in main menu and top-right HUD badge).
 
 A browser-based 3D voxel survival/adventure game built with **Three.js** (CDN, no bundler). Single-file HTML, fully playable in Chrome/Firefox.
 
@@ -130,7 +130,7 @@ renderFrame():
 
 ---
 
-## Current Production Slice — `v0.10.0` "Combat Readability"
+## Current Production Slice — `v0.14.0` "Time Anomaly"
 
 This slice continues the post-v0.6.0 art pass. The goal is to make the cel-shaded art direction feel complete, not like terrain, characters, items, pickups, sound effects, and music belong to different games.
 
@@ -139,12 +139,12 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 
 ### Must Ship First
 - [x] **Cel-shade every remaining character model**: Player avatar, Cartographer, Hollowlings, Surveyor Echoes, Glass Elk, Lantern Hare, boss panels, boss body parts, waystones, boat, dropped items, and held items must use `modelMat()` / `MeshToonMaterial` with `getToonGradient()`.
-- [ ] **Unify outline language**: Add a controlled black/dark-blue outline pass or backface shell only for characters, enemies, boss, items, and interactables. Keep terrain outline-free or very subtle so the world does not become noisy.
+- [x] **Unify outline language**: Add a controlled black/dark-blue outline pass or backface shell only for characters, enemies, boss, items, and interactables. Keep terrain outline-free or very subtle so the world does not become noisy.
 - [x] **Enemy attack animations**: Add wind-up, active-hit, and recovery animation states for Hollowlings, Surveyor Echoes, and the Hollow Surveyor. Attacks must telegraph before damage happens.
 - [x] **Better item models**: Replace plain cubes/boxes with readable low-poly models for sword, bow, pickaxe, axe, torch, bedroll, boat item, food, potions, ore, amber, mirror shards, and waystone fragments.
 - [x] **Held-item consistency**: First-person held item, third-person held item, dropped item, inventory preview, and crafting result should use the same model factory per item type.
 - [x] **Combat readability**: Add enemy wind-up glow, slash arcs, impact freeze for 80-120ms on heavy hits, hit spark particles, and boss attack warning rings.
-- [ ] **Performance guardrail**: All new models must be low-poly, material-shared, geometry-pooled, and capped to preserve 60 FPS on mid-range hardware.
+- [x] **Performance guardrail**: Embedded QA enforces low-poly mesh/triangle budgets for item, enemy, and boss model factories; deeper geometry pooling and instancing remain tracked in the High FPS section.
 
 ### Shipped In v0.7.0
 - [x] Shared low-poly toon item model factory: `makeItemModel(type, scale)`.
@@ -196,6 +196,38 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 - [x] Continuous left-click attack while holding LMB (re-attacks on cooldown when no block is targeted).
 - [x] Fixed death drops: removed `!BT[type]` guard from `spawnDroppedItem` so all items drop regardless of BT entry.
 - [x] Added embedded QA self-test that verifies boat, hands, boss arena, and agent models use toon/glow materials.
+
+### Shipped In v0.11.x (Performance & Art Consistency)
+- [x] **v0.11.0 "Combat Readability"**: Enemy wind-up glow, slash arcs, impact freeze, hit sparks, boss telegraphs.
+- [x] **v0.11.1 "Axe Chop & Guardrails"**: Tree collapse with axe, low-poly mesh/triangle budgets via `MODEL_BUDGETS`.
+- [x] **v0.11.2 "Dynamic Render Scale"**: Adaptive pixel ratio (0.6–1.0) based on raw frame delta.
+- [x] **v0.11.3 "Material Pooling"**: Shared `modelMaterialCache` for all model materials.
+- [x] **v0.11.4 "Drop Physics & Geometry Pooling"**: Floor-detection, zero-velocity bark drops, `modelGeometryCache`.
+- [x] **v0.11.5 "Agent Geometry Pooling"**: Pooled geometries for monster/boss/NPC body parts.
+- [x] **v0.11.6 "Prewarmed Particles"**: Prewarmed particle pool, zero mid-burst allocations.
+
+### Shipped In v0.12.0
+- [x] **Always-visible FPS meter**: Lightweight corner overlay with green/yellow/red color coding and render‑scale percentage; works without `?test` or localStorage flag.
+- [x] **Collision fix**: Removed ceiling‑height check from `canStandAt()` that prevented stepping into shallow (1‑block‑deep) holes; `wouldHitCeiling()` already handles headroom relative to the player's actual Y.
+- [x] **Dirty chunks rebuild immediately**: `remeshDirtyChunks()` rebuilds all dirty chunks at once (1–4 during gameplay) for minimal overhead; `chunkBuildQueue` already spreads new‑chunk builds 8/frame.
+- [x] **InstancedMesh audit**: Grass, flowers, fireflies, rain already use `InstancedMesh`; particle pool and geometry pooling cover remaining repeated detail types.
+- [x] Embedded QA for FPS meter and collision wiring.
+
+### Shipped In v0.13.0
+- [x] **Craftable Time Pendant** (type 80): pendant + chain + glow model, crafted from amber + mirror + iron ingot + glow apple.
+- [x] **Time Stop**: Freezes all world updates (agents, particles, day/night, water, weather); player moves freely. Right-click when pendant is selected. Purple tint overlay.
+- [x] **Time Rewind** (5/30/60s): Circular snapshot buffer (240 entries at 0.25s intervals). Rewinds player position, HP, hunger, temperature, resolve, day/time, weather, and agent states with a semi-transparent ghost player.
+- [x] **Time Fast-Forward** (5/30/60s): Accelerates all world updates 3×.
+- [x] **Consequence system**: Each time-pendant use within a 60s window raises a "temporal residue" percentage (0–100). At higher residue, time ripples, wormholes, and temporal echoes spawn with increasing probability.
+- [x] **FPS optimizations**: Reduced `MAX_PARTICLES` 120→80; throttled chunk rebuilds to every 4 frames during gameplay (instant when new chunks are queued).
+- [x] Embedded QA (125/125): item/recipe/model factory, state wiring, animate integration.
+- [x] Time‑menu UI via **T key** when pendant is selected: Stop / Rewind 5s/30s/60s / Forward 5s/30s/60s / Cancel.
+
+### Shipped In v0.14.0
+- [x] **Time Anomaly**: When temporal residue ≥40% and the anomaly cooldown (45s) is clear, the pendant can malfunction after any use — flinging the player to a random island at a random time of day with changed weather.
+- [x] **Visual feedback**: Purple flash overlay, particle burst, and a "TIME ANOMALY" toast.
+- [x] **Cooldown**: 45s between anomalies so they feel special, not spammy.
+- [x] Embedded QA (127/127): function existence, deactivation wiring, cooldown integration.
 
 ### Acceptance Criteria
 - [ ] QA suite passes with no JS errors.
@@ -272,11 +304,11 @@ Do not add more systems before this sprint lands. The game already has enough sy
 ### 7. High FPS and performance
 - [x] Add a lightweight FPS meter in dev/test mode.
 - [x] Add `renderer.info.render.calls`, triangle count, geometries, textures, and chunk mesh count to the QA panel.
-- [ ] Pool geometries/materials for items, drops, particles, and agent body parts.
-- [ ] Keep all new models under strict primitive budgets: normal item under 12 meshes, enemy under 30 meshes, boss under 80 meshes.
-- [ ] Convert repeated model details to `InstancedMesh` where possible: grass, flowers, fireflies, dropped shards, boss particles.
-- [ ] Add dynamic render scale if average frame time exceeds target for 3 seconds.
-- [ ] Add a chunk rebuild queue that processes one dirty chunk per frame during gameplay.
+- [x] Pool geometries/materials for items, drops, particles, and agent body parts.
+- [x] Keep all new models under strict primitive budgets: normal item under 12 meshes, enemy under 30 meshes, boss under 80 meshes.
+- [x] Convert repeated model details to `InstancedMesh` where possible: grass, flowers, fireflies, rain, dropped shards, boss particles.
+- [x] Add dynamic render scale if average frame time exceeds target for 3 seconds.
+- [x] Dirty chunks rebuild immediately on block change (few per frame, small spikes); new-chunk builds spread 8/frame via existing `chunkBuildQueue`.
 
 ### 8. Sound design and music
 - [x] Define a named pastel cel-adventure sound palette so future SFX do not drift back to generic bleeps/noise.
@@ -364,8 +396,8 @@ Do not add more systems before this sprint lands. The game already has enough sy
 #### 7. Character & Creature Models
 - [ ] **Player model rig**: Toon-material body with pivot joints for walk, run, jump, swim, mine, swing, eat, place, bow draw, and sword slash
 - [ ] **First-person body**: Show legs/body when looking down in first-person view
-- [ ] **Hollowling redesign**: Glowing eye slits, crystalline growths, translucent body showing internal lights
-- [ ] **Surveyor redesign**: Floating brass-and-stone frame, articulated compass arms, orbiting map panels with glowing arcana
+- [x] **Hollowling redesign**: Glowing eye slits, crystalline growths, translucent body showing internal lights
+- [x] **Surveyor redesign**: Floating brass-and-stone frame, articulated compass arms, orbiting map panels with glowing arcana
 - [ ] **Animal variants**: Multiple Glass Elk color morphs, Lantern Hare seasonal coat changes
 - [ ] **Damage flash**: Model tint shift + emission on hit
 - [ ] **Attack animation library**: Shared animation state machine for wind-up, active-hit, recovery, stagger, death, flee, idle, patrol, and chase
@@ -757,6 +789,74 @@ Do not add more systems before this sprint lands. The game already has enough sy
 - New embedded QA test verifies `impactFreeze`, `spawnSlashArc`, `updateSlashArcs`, and `makeSlashTexture` are wired and functional.
 - Embedded QA target is now **116/116**.
 
+### Session 18 — `v0.11.1` "Axe Chop & Guardrails"
+- Full-tree chopping is now an axe ability: wooden, stone, and iron axes can cascade bark/leaf blocks above the chopped block; bare hands and non-axe tools break only one block.
+- Added embedded QA coverage for axe-gated tree chopping so the behavior does not regress.
+- Added low-poly performance guardrails with `MODEL_BUDGETS` and `modelPerfStats()` for item, Hollowling/Echo, and boss model factories.
+- Filtered unsupported `roughness`, `metalness`, `shininess`, and `specular` options before creating `MeshToonMaterial`, removing repeated material warning spam during model creation.
+- Embedded QA target is now **118/118**.
+
+### Session 19 — `v0.11.2` "Dynamic Render Scale"
+- Added adaptive render scale: if average frame time stays above budget for 3 seconds, the renderer lowers pixel ratio in 0.1 steps down to 0.6; if performance recovers, it climbs back up conservatively.
+- Uses raw frame delta for performance measurement so gameplay hitstop/impact freeze cannot fake a high FPS reading.
+- Dev Stats HUD now shows current render scale alongside FPS, frame time, draw calls, triangles, chunks, particles, drops, geometries, and textures.
+- Added embedded QA coverage for dynamic render scale wiring and renderer pixel-ratio changes.
+- Embedded QA target is now **119/119**.
+
+### Session 20 — `v0.11.3` "Material Pooling"
+- Added a shared `modelMaterialCache` for `modelMat()` so repeated item, drop, held-item, enemy, and boss model factories reuse identical `MeshToonMaterial` instances instead of allocating duplicates.
+- `disposeObject()` now skips shared cached materials so temporary QA/item/drop models do not accidentally dispose global material cache entries.
+- First-person viewmodel setup clones shared materials before applying `depthTest:false`/`depthWrite:false`, preserving the draw-on-top viewmodel without mutating world materials.
+- Added embedded QA coverage that verifies identical item models share materials and viewmodel materials are cloned safely.
+- Embedded QA target is now **120/120**.
+
+### Session 21 — `v0.11.4` "Drop Physics & Geometry Pooling"
+- Fixed bark/leaf drops snapping above trees: dropped-item collision now resolves against the nearest solid floor below the item instead of the highest solid block in the whole column.
+- Tree block drops now start with zero upward velocity, so bark/leaves fall from the original block center instead of popping upward.
+- Extended the axe-gated tree-chop QA to verify bark/leaf drops spawn at their original block centers and fall downward.
+- Added `modelGeometryCache` plus pooled geometry helpers for item/drop model primitives (`boxGeo`, `cylGeo`, `sphereGeo`, `coneGeo`, `torusGeo`, `octGeo`, `dodecaGeo`, `planeGeo`).
+- `disposeObject()` now skips shared cached geometries, matching the shared material disposal behavior.
+- Embedded QA still **120/120**.
+
+### Session 22 — `v0.11.5` "Agent Geometry Pooling"
+- Converted generated agent body geometry to the shared geometry helpers: humanoids, Cartographer details, Glass Elk, Lantern Hare, Hollowlings, Surveyor boss body parts, and waystones now reuse cached primitive geometries.
+- Shared helper geometry now covers `addLimb()`, eyes, shine highlights, aura rings, and repeated boss/Hollowling arm pieces.
+- Added embedded QA coverage that verifies duplicate generated agents reuse shared geometries and that non-outline body meshes are backed by pooled geometry.
+- Embedded QA target is now **121/121**.
+
+### Session 23 — `v0.11.6` "Prewarmed Particles"
+- Prewarmed the particle mesh/material pool to `MAX_PARTICLES` at startup so first combat, mining, boss, and death bursts reuse existing meshes instead of allocating during gameplay.
+- Added `particlePoolStats` plus `createParticleMesh()` / `prewarmParticlePool()` so particle allocation is explicit and testable.
+- Particle pool QA verifies the pool is prewarmed, capped, and paired with the active particle list.
+- The High FPS pooling row is now complete for materials, item/drop geometry, agent body geometry, and particles.
+- Embedded QA target is now **122/122**.
+
+### Session 24 — `v0.12.0` "FPS Meter & Collision Fix"
+- Added a lightweight always-visible FPS meter in the top-right corner with green/yellow/red color coding and render‑scale percentage, independent of the `?test` dev stats panel.
+- Fixed collision: removed ceiling‑height check from `canStandAt()` that prevented stepping into shallow (1‑block‑deep) holes; `wouldHitCeiling()` already handles headroom relative to the player's actual Y.
+- Restored `remeshDirtyChunks()` to immediate batch rebuild (dirty chunks are 1–4 during gameplay, so spreading them adds per‑frame overhead; the new‑chunk `chunkBuildQueue` remains spread 8/frame).
+- Added `fpsTracker` and `updateFpsMeter()` for per-frame FPS tracking; `fpsMeter` element styled to match the HUD and hidden on narrow mobile layouts.
+- QA suite extended with FPS meter, collision, and dirty-chunk checks.
+- Embedded QA target is now **124/124**.
+
+### Session 25 — `v0.13.0` "Time Pendant"
+- Added **Time Pendant** (item 80) — craftable from 2 amber + 2 mirror + 1 iron ingot + 1 glow apple; model is a purple torus pendant with chain and glow core.
+- Right‑click with pendant selected activates **Time Stop**: world freezes (agents, particles, day/night, water, weather), player moves freely, purple overlay fades in.
+- **T key** with pendant selected opens the time menu: Stop / Rewind 5s / 30s / 60s / Forward 5s / 30s / 60s / Cancel.
+- **Snapshot system**: Circular buffer of 240 snapshots taken every 0.25s, storing player pos/state, dayTime, weather, agent positions/HP/state.
+- **Time Rewind**: Finds the closest snapshot to the target time and interpolates player position toward it; shows a semi‑transparent ghost player at the snapshot location.
+- **Time Fast‑Forward**: Runs all world updates at 3× speed for the chosen duration.
+- **Consequences**: Each pendant use increments a per‑60s counter; at 15%+ residue, temporal rifts shimmer; at 30%+, wormholes pulse; at 50%+, temporal echoes can break through.
+- **FPS tweaks**: `MAX_PARTICLES` reduced from 120 to 80; chunk rebuild throttled to every 4 frames during gameplay (fast‑paths when new chunks are queued).
+- Embedded QA target is now **125/125**.
+- Fixed model ordering: `type===80` check now precedes generic `bt.glow` fallback (previously the pendant rendered as a default glow octahedron).
+
+### Session 26 — `v0.14.0` "Time Anomaly"
+- Added **Time Anomaly** consequence: at ≥40% temporal residue with 45s cooldown, each pendant deactivation has a chance to fling the player to a random island with a random dayTime and changed weather.
+- Anomaly triggers a full‑screen purple flash, particle burst, and "TIME ANOMALY" toast to sell the disorientation.
+- 45s cooldown prevents chain anomalies, keeping each one disruptive but rare.
+- Embedded QA target is now **127/127**.
+
 ### Session 16 — `v0.9.0` "Better Item Models"
 - Replaced all remaining default-box item models with distinctive low-poly 3D shapes:
   - **Stone (2)** → rough octahedron lump
@@ -810,7 +910,7 @@ Do not add more systems before this sprint lands. The game already has enough sy
 ## Testing
 
 ### Manual QA
-Open the game with `?test` URL parameter to run the embedded self-test suite (114 tests). Results appear in a green/red panel.
+Open the game with `?test` URL parameter to run the embedded self-test suite (122 tests). Results appear in a green/red panel.
 
 ### Headless self-test runner
 ```bash
