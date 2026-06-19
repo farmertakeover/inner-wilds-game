@@ -1,6 +1,6 @@
 # Inner Wilds — 3D Voxel Survival/Adventure Game
 
-**Current version: `v0.14.0` — "Time Anomaly"** (shown in main menu and top-right HUD badge).
+**Current version: `v0.17.0` — "Berry Bushes & Death Compass"** (shown in main menu and top-right HUD badge).
 
 A browser-based 3D voxel survival/adventure game built with **Three.js** (CDN, no bundler). Single-file HTML, fully playable in Chrome/Firefox.
 
@@ -22,8 +22,9 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | WASD | Move / Sprint (hold shift) |
 | Space | Jump (hold while moving = auto-jump) |
 | Left-click | Mine block / Attack creature |
-| Right-click | Place selected item / Eat food / Drink potion |
+| Right-click | Place selected item / Eat food / Drink potion / Aim bow / Stop or resume time with Time Pendant selected |
 | E | Interact (talk to NPCs, activate) |
+| T | Open Time Pendant menu when the pendant is selected |
 | F | Center breath (restore resolve) |
 | Tab | Toggle inventory + Journal/Quests |
 | C | Toggle crafting |
@@ -86,8 +87,10 @@ Ancient monoliths hidden across the islands. Restoring them (by studying the Car
 - `agents` — array of NPC/monster/boss/animal groups
 - `chunks` — Map of chunk key → Uint8Array voxel data
 - `chunkMeshes` — Map of chunk key → Three.js Mesh (greedy-meshed)
-- `placedFoliage` — array of sprite meshes (grass, flowers, bugs, torches)
+- `blockEdits` — compact journal of player voxel edits replayed over regenerated chunks on load
+- `placedFoliage` — array of placed pickup-friendly meshes (grass, flowers, bugs, torches, boats, bedrolls)
 - `droppedItems` — array of dropped item entities
+- `arrowProjectiles` — physical bow arrows; freeze during time stop and resume flight afterward
 
 ### Rendering Pipeline
 
@@ -117,8 +120,10 @@ renderFrame():
 - **Boss**: Three-phase Hollow Surveyor with shockwave/charge/teleport/ground-slam attacks, minion summoning, arena ring
 - **Quests**: Locked → active → done state machine, triggered by exploration and NPC interaction
 - **Dropped items**: Physics (gravity + ground collision), 10s lifetime, pickup on contact
-- **Boat**: Craftable floating platform entity with WASD steering and water physics
-- **Sleep**: Bedroll item skips to dawn
+- **Boat**: Craftable portable placeable item; can be nudged, placed on sea surface, ridden with `E`, and picked back up
+- **Sleep**: Bedroll is a portable placeable item; interact with a placed bedroll to sleep
+- **Bow**: RMB aims; LMB fires physical arrows. During Time Stop, arrows hang in mid-air and resume when time returns.
+- **Time Pendant**: Time Stop/Rewind/Fast-Forward/Anomaly framework with selected-device gating and temporal residue consequences
 - **Crafting**: 27+ recipes, recipe discovery toasts
 - **AI**: Hollowling state machine (IDLE → CHASING → ATTACKING → FLEEING), Surveyor Echo minion AI, animal idle wander
 
@@ -130,7 +135,7 @@ renderFrame():
 
 ---
 
-## Current Production Slice — `v0.14.0` "Time Anomaly"
+## Current Production Slice — `v0.17.0` "Berry Bushes & Death Compass"
 
 This slice continues the post-v0.6.0 art pass. The goal is to make the cel-shaded art direction feel complete, not like terrain, characters, items, pickups, sound effects, and music belong to different games.
 
@@ -228,6 +233,53 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 - [x] **Visual feedback**: Purple flash overlay, particle burst, and a "TIME ANOMALY" toast.
 - [x] **Cooldown**: 45s between anomalies so they feel special, not spammy.
 - [x] Embedded QA (127/127): function existence, deactivation wiring, cooldown integration.
+
+### Shipped In v0.15.0
+- [x] **Iron ore veins**: Underground iron ore now generates in noisy vein clusters, enabling iron ingot crafting in normal play.
+- [x] **Portable boats and bedrolls**: Boats and bedrolls can be placed on any solid face, then mined/picked back up like other deployables. Placed bedrolls still support sleep via `E`.
+- [x] **Single-click placement fix**: Right-click placement now starts a short cooldown immediately, preventing one click from placing two blocks.
+- [x] **Icon-first hotbar/inventory**: Item slots no longer print names inside the slot; icons carry identity and counts sit as compact badges.
+- [x] **Transparent item art**: Removed the extra colored square behind item icons and redrew core block/item/tool/food/armor/boat/bedroll/pendant icons as transparent silhouette art.
+- [x] Embedded QA (131/131): ore generation, portable pickup loop, right-click cooldown, transparent icon backing, and icon silhouette uniqueness.
+
+### Shipped In v0.16.0
+- [x] **Persistent player builds across updates**: `blockEdits` journals mined/placed voxel edits and replays them over regenerated chunks on load. Your builds persist while untouched terrain still receives new update-generation logic.
+- [x] **Pickup notifications moved to the side only**: Removed duplicate center pickup toasts. Item pickup feedback now uses the right-side art feed exclusively.
+- [x] **Boat physicality**: Placed boats can be nudged by the player, float to sea level, save their moved position, and can be ridden with `E` once pushed onto water.
+- [x] **Rolled-out bedroll placement**: Inventory bedroll stays rolled; placed bedroll is now an unrolled sleep mat with pillow, straps, and end roll.
+- [x] **Bow interaction**: RMB aims the bow, LMB fires a physical projectile, and the first-person/third-person aim pose reflects the drawn stance.
+- [x] **Temporal arrows**: Arrows fired during Time Stop freeze in mid-air and resume their trajectory when time restarts.
+- [x] **Time Pendant bug fixes**: Sleeping is blocked while time is stopped; resume dialogue closes correctly; time can only be stopped/resumed while the pendant is selected.
+- [x] **Time Pendant controls in context prompt**: Holding the pendant surfaces `RMB Stop Time`, `RMB Resume Time`, and `T Time Menu` alongside block prompts.
+- [x] **Model parity pass**: Bow and pickaxe models now better match the new icon silhouettes.
+- [x] Embedded QA (137/137): block-edit persistence, right-side pickup feed, time resume/sleep gating, frozen arrows, bow projectile spawn, and stopped-time player cooldowns.
+
+### Shipped In v0.17.0
+- [x] **Nerfed hunger drain**: Base drain reduced ~50%; sprint/water multipliers softened so food management feels natural, not frantic.
+- [x] **Berry bushes**: New block type (16) generates in small clusters on grassy terrain; harvest for 2–3 berries each.
+- [x] **Death Compass** (item 81): Crafted from 3 iron ingots + 1 glow apple + 1 mirror shard. Tracks your last death coordinates and displays a compass UI with needle pointing toward your grave and distance readout.
+- [x] Embedded QA (140/140): hunger nerf verification, berry bush generation, death compass item/recipe/model/UI/tracking.
+
+### Future Time Pendant Expansion
+- [ ] **Self-meeting paradoxes**: Rewind leaves a past-self echo that repeats the player's prior path. Touching it causes a paradox event; helping it complete the old path creates a reward instead.
+- [ ] **Time Wraiths**: High residue spawns hunters that exist outside paused time. They do not freeze, can phase through player-built blocks, and punish reckless time abuse.
+- [ ] **Era travel**: The pendant can jump the player into Dawn Era, Ruin Era, Hollow Era, or Far Future variants of the same island. Same coordinates, different biome state, enemy ecology, loot tables, and sky.
+- [ ] **Alternate universes**: Rare anomaly tears create parallel shards where choices diverged: flooded Survey Isle, overgrown Survey Isle, iron-industrial Survey Isle, empty-dead Survey Isle. Each shard has one resource or secret impossible in the prime world.
+- [ ] **Timeline overlays**: While holding the pendant, ghost silhouettes show where blocks, mobs, and the player existed 5/30/60 seconds ago.
+- [ ] **Paradox crafting**: Some recipes require materials from mutually exclusive timelines, forcing the player to carry items across eras without collapsing the loop.
+- [ ] **Frozen projectile puzzles**: Fire arrows, thrown items, or falling blocks during Time Stop, then resume time to trigger distant switches, break crystals, or chain combat openings.
+- [ ] **Temporal debt meter**: Replace flat residue with named thresholds: Static, Rifted, Fractured, Hunted, Paradox. Each tier adds systemic risks and new powers.
+- [ ] **Wormhole routing**: Stable wormholes become buildable shortcuts once the player learns to anchor them with chart-light and mirror shards.
+- [ ] **Save-slot timeline identity**: Each save slot can become a canonical universe. Future systems can let a player visit echoes of other save slots as alternate timelines.
+- [ ] **Boss-scale time design**: A future boss can split into versions from three eras, requiring the player to pause one, rewind another, and bait the future version into damaging the past version.
+
+### Future Art, Blocks, Leaves, And Mobs
+- [ ] **Unique block-top language**: Replace shared stripe/noise tops with per-block visual identity: moss tufts, stone fracture plates, amber veins, mirror glints, ember ash freckles, sand ripples, plank grain, cobble chips, iron flecks.
+- [ ] **Anime leaf canopy**: Leaves should be semi-translucent clustered planes with soft alpha, leaf-shaped silhouette noise, color variation, and sunlit rim highlights instead of opaque cubes.
+- [ ] **Creature redesign pass**: Keep Hollowlings eerie, but push all creatures into stronger anime silhouettes: bigger shape language, readable eyes, color-coded weak points, and bolder idle animations.
+- [ ] **New mob families**: Add ranged Echo Archers, status-effect Sporespinners, shielded Husk Knights, burrowing Ash Eels, mirror-decoy Glasslings, and flying Lantern Moths.
+- [ ] **Attack pattern variety**: Ranged volleys, poison/slow/freeze status, charge lanes, teleport feints, shield breaks, pack tactics, and mobs that only move when time is stopped.
+- [ ] **Biome encounter tables**: Each island should have distinct ambient entities, hostile mobs, rare spawns, and night escalation patterns.
 
 ### Acceptance Criteria
 - [ ] QA suite passes with no JS errors.
@@ -856,6 +908,31 @@ Do not add more systems before this sprint lands. The game already has enough sy
 - Anomaly triggers a full‑screen purple flash, particle burst, and "TIME ANOMALY" toast to sell the disorientation.
 - 45s cooldown prevents chain anomalies, keeping each one disruptive but rare.
 - Embedded QA target is now **127/127**.
+
+### Session 27 — `v0.15.0` "Iron Veins & Item Art"
+- Added underground **iron ore veins** using smooth noise pockets inside stone, so iron ingots are craftable in normal gameplay.
+- Made **boats and bedrolls portable deployables**: place on any solid face, mine/pick them back up, and interact with placed bedrolls to sleep.
+- Fixed right-click single placement placing two blocks by setting placement cooldown immediately on pointer down.
+- Reworked hotbar/inventory icons into transparent silhouette art and removed names from slots; counts now display as compact badges.
+- Redrew core blocks, resources, tools, armor, food, potions, boat, bedroll, and time pendant icons so inventory identity does not depend on reading labels.
+- Embedded QA target is now **131/131**.
+
+### Session 28 — `v0.16.0` "Temporal Arrows & Persistence"
+- Added **block edit persistence**: player-mined/placed voxel edits are saved as a compact journal and replayed over regenerated chunks, preserving builds across updates without freezing the whole world generator.
+- Moved pickup feedback to the right-side art feed only; removed duplicate center pickup toasts.
+- Added physical **boat nudging** and placed-boat riding via **E** when the boat is on water; moved boat positions are saved.
+- Placed bedroll now renders as a rolled-out mat while inventory/drop bedroll remains rolled.
+- Bow now uses **RMB aim + LMB fire** and spawns physical arrows instead of instant hits.
+- **Temporal arrows**: arrows fired during Time Stop hang in mid-air and resume flight when time resumes.
+- Time Pendant fixes: sleep is blocked during stopped time, resume dialogue closes correctly, and pause/resume requires the pendant selected.
+- Added context prompts for Time Pendant controls and documented a major future roadmap for self-paradoxes, time wraiths, era travel, and alternate universes.
+- Embedded QA target is now **137/137**.
+
+### Session 29 — `v0.17.0` "Berry Bushes & Death Compass"
+- Nerfed **hunger drain** by ~50%: base drain 0.38/60s (was ~0.75), sprint 1.42/60s (was ~2.8); survival feels paced, not punishing.
+- Added **berry bushes** (block 16): generate in small clusters on grassy terrain; harvest for 2–3 berries each.
+- Added **Death Compass** (item 81, recipe: 3 iron ingots + 1 glow apple + 1 mirror): tracks last death position, shows compass UI with needle + distance when held.
+- Embedded QA target is now **140/140**.
 
 ### Session 16 — `v0.9.0` "Better Item Models"
 - Replaced all remaining default-box item models with distinctive low-poly 3D shapes:
