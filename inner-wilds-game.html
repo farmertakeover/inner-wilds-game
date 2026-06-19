@@ -69,6 +69,7 @@ canvas{display:block}
 .save-feedback{position:absolute;right:12px;top:48px;max-width:min(320px,calc(100vw - 24px));padding:9px 12px;border-radius:12px;color:var(--ink);font-size:.78rem;line-height:1.3;opacity:0;transform:translateY(-8px);transition:opacity .2s,transform .2s}.save-feedback.show{opacity:1;transform:translateY(0)}.save-feedback[hidden]{display:none}.save-feedback strong{display:block;color:var(--teal)}
 .dev-stats{position:absolute;right:12px;bottom:78px;min-width:190px;padding:8px 10px;border-radius:10px;color:var(--muted);font:600 .68rem/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}.dev-stats[hidden]{display:none}.dev-stats strong{display:block;margin-bottom:3px;color:var(--teal);font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}.dev-stats b{color:var(--gold);font-weight:700}
 .death-compass{position:absolute;right:12px;top:140px;width:72px;height:72px;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s}.death-compass.show{opacity:1;transform:translateY(0)}.death-compass[hidden]{display:none}.compass-ring{position:absolute;inset:0;border:2px solid rgba(242,201,109,.4);border-radius:50%;background:radial-gradient(circle at center,rgba(255,240,200,.12),rgba(14,20,28,.85));box-shadow:inset 0 0 12px rgba(0,0,0,.5),0 0 8px rgba(242,201,109,.2)}.compass-needle{position:absolute;left:50%;top:50%;width:2px;height:28px;margin-left:-1px;margin-top:-28px;background:linear-gradient(180deg,#ffd24a,#c9a84a);border-radius:1px;transform-origin:bottom center;box-shadow:0 0 6px #ffd24a}.compass-dist{position:absolute;bottom:-20px;left:50%;width:max-content;transform:translateX(-50%);font:600 .6rem ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffd24a;text-shadow:0 0 4px rgba(0,0,0,.8);white-space:nowrap}
+.death-meter{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);width:200px;pointer-events:none;opacity:0;transition:opacity .3s}.death-meter.show{opacity:1}.death-meter[hidden]{display:none}.death-meter-fill{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}.death-meter-fill::after{content:"";display:block;height:100%;border-radius:3px;transition:width .3s ease,background .3s}.death-meter-text{text-align:center;margin-top:2px;font:700 .68rem ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold);text-shadow:0 0 4px rgba(0,0,0,.8)}
 .start{position:fixed;inset:0;display:grid;place-items:center;padding:16px;pointer-events:auto;background:radial-gradient(circle at 50% 30%,rgba(154,121,227,.15),rgba(9,13,20,.88) 55%);z-index:10}
 .start.hidden{display:none}
 .start-card{width:min(760px,100%);padding:24px;border-radius:22px 6px 22px 6px}
@@ -242,6 +243,10 @@ canvas{display:block}
     <div class="compass-ring"></div>
     <div class="compass-needle"></div>
     <div class="compass-dist"></div>
+  </div>
+  <div class="death-meter" id="deathMeter" hidden>
+    <div class="death-meter-fill"></div>
+    <div class="death-meter-text">--</div>
   </div>
   <div class="version-badge" id="versionBadge"></div>
   <div class="dev-stats glass" id="devStats" hidden></div>
@@ -1537,6 +1542,7 @@ const ui={
   loading:document.getElementById('loading'),loadingFill:document.getElementById('loadingFill'),loadingLabel:document.getElementById('loadingLabel'),
   deathScreen:document.getElementById('deathScreen'),deathReason:document.getElementById('deathReason'),respawnBtn:document.getElementById('respawnBtn'),
   deathCompass:document.getElementById('deathCompass'),
+  deathMeter:document.getElementById('deathMeter'),
 };
 
 function setLoadingProgress(pct,label){
@@ -1627,6 +1633,7 @@ function updateHudFeedback(inGameplay=true){
   updateContextPrompt(inGameplay);
   updateBossHealthBar();
   const compass=ui.deathCompass;
+  const meter=ui.deathMeter;
   const held=player.hotbar[player.selectedSlot];
   if(compass&&held===81&&player.lastDeathPos){
     const to=player.lastDeathPos.clone().sub(player.pos);
@@ -1639,8 +1646,18 @@ function updateHudFeedback(inGameplay=true){
     if(needle)needle.style.transform=`rotate(${screenAngle}rad)`;
     if(distEl)distEl.textContent=dist>BLOCK*1000?`${(dist/BLOCK/1000).toFixed(1)}km`:`${Math.round(dist/BLOCK)}m`;
     compass.classList.add('show');compass.hidden=false;
+    if(meter){
+      const maxDist=BLOCK*500;
+      const pct=Math.max(0,Math.min(1,(1-dist/maxDist)*100));
+      const fill=meter.querySelector('.death-meter-fill');
+      const text=meter.querySelector('.death-meter-text');
+      if(fill)fill.style=`width:${pct}%;background:${pct>60?'#79d8c8':pct>30?'#f2c96d':'#ff7b6b'}`;
+      if(text)text.textContent=dist>BLOCK*1000?`Death: ${(dist/BLOCK/1000).toFixed(1)}km`:`Death: ${Math.round(dist/BLOCK)}m`;
+      meter.classList.add('show');meter.hidden=false;
+    }
   } else if(compass){
     compass.classList.remove('show');compass.hidden=true;
+    if(meter){meter.classList.remove('show');meter.hidden=true}
   }
 }
 const fpsTracker={frames:0,lastTime:performance.now(),fps:0};
