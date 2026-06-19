@@ -1,6 +1,6 @@
 # Inner Wilds — 3D Voxel Survival/Adventure Game
 
-**Current version: `v0.7.6` — "Performance HUD Polish"** (shown in main menu and top-right HUD badge).
+**Current version: `v0.8.1` — "Death & Scroll"** (shown in main menu and top-right HUD badge).
 
 A browser-based 3D voxel survival/adventure game built with **Three.js** (CDN, no bundler). Single-file HTML, fully playable in Chrome/Firefox.
 
@@ -28,6 +28,7 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | Tab | Toggle inventory + Journal/Quests |
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
+| Mouse wheel | Cycle hotbar selection |
 | Q | Drop the selected stack |
 | M | Main menu (New Game / Continue / Settings) |
 | V | Toggle 1st/3rd person |
@@ -129,7 +130,7 @@ renderFrame():
 
 ---
 
-## Current Production Slice — `v0.7.6` "Performance HUD Polish"
+## Current Production Slice — `v0.8.1` "Death & Scroll"
 
 This slice continues the post-v0.6.0 art pass. The goal is to make the cel-shaded art direction feel complete, not like terrain, characters, items, pickups, sound effects, and music belong to different games.
 
@@ -188,6 +189,14 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 - [x] Performance HUD appears automatically in `?test` mode and can be enabled with `localStorage.iw_dev_stats = '1'`.
 - [x] Embedded QA verifies the performance stats object, HUD node, renderer info wiring, and main-loop update call.
 
+### Shipped In v0.7.7
+- [x] Converted remaining `MeshStandardMaterial` to `MeshToonMaterial` (viewmodel hands, boat hull/rail, boss arena ring/pillars).
+- [x] Added `toonMat(color, opts)` alias for `modelMat()` API completeness.
+- [x] Continuous right-click placement while holding RMB (0.25s cooldown).
+- [x] Continuous left-click attack while holding LMB (re-attacks on cooldown when no block is targeted).
+- [x] Fixed death drops: removed `!BT[type]` guard from `spawnDroppedItem` so all items drop regardless of BT entry.
+- [x] Added embedded QA self-test that verifies boat, hands, boss arena, and agent models use toon/glow materials.
+
 ### Acceptance Criteria
 - [ ] QA suite passes with no JS errors.
 - [ ] A fresh New Game shows no duplicate/ghost limbs in first person.
@@ -207,29 +216,29 @@ Do not add more systems before this sprint lands. The game already has enough sy
 ## Answered TODO List — What To Do Next
 
 ### 1. Cel-shade the rest of the game
-- [ ] Convert all `MeshStandardMaterial` character/item materials to `modelMat()` unless the material needs special transparency, emissive glow, or water-like behavior.
-- [ ] Add a `toonMat(color, opts={})` helper that wraps `MeshToonMaterial`, `gradientMap:getToonGradient()`, texture generation, emissive handling, and optional outline metadata.
-- [ ] Audit every model factory: `humanoid()`, `makeMonster()`, `makeBoss()`, `makeAnimal()`, `makeWaystone()`, `buildBoatModel()`, `buildFirstPersonHands()`, `updateHandItem()`, `spawnDroppedItem()`.
-- [ ] Add a self-test that traverses `agents`, `playerModel`, `boatModel`, and dropped item meshes to ensure model materials are toon materials.
+- [x] Convert all `MeshStandardMaterial` character/item materials to `modelMat()` unless the material needs special transparency, emissive glow, or water-like behavior.
+- [x] Add a `toonMat(color, opts={})` helper that wraps `MeshToonMaterial`, `gradientMap:getToonGradient()`, texture generation, emissive handling, and optional outline metadata.
+- [x] Audit every model factory: `humanoid()`, `makeMonster()`, `makeBoss()`, `makeAnimal()`, `makeWaystone()`, `buildBoatModel()`, `buildFirstPersonHands()`, `updateHandItem()`, `spawnDroppedItem()`.
+- [x] Add a self-test that traverses `agents`, `playerModel`, `boatModel`, and dropped item meshes to ensure model materials are toon materials.
 - [ ] Keep block terrain cel-shading flat and readable; do not over-outline every voxel face.
 
 ### 2. Fix and improve first-person/third-person limbs
-- [ ] Keep the v0.6.0 single-pass viewmodel approach unless a GPU-specific bug resurfaces.
+- [x] Keep the v0.6.0 single-pass viewmodel approach unless a GPU-specific bug resurfaces.
 - [ ] Reduce first-person arm count visually: forearm + hand + thumb is enough; upper sleeve can be shortened or hidden below screen edge.
-- [ ] Add a first-person "rest pose" where hands sit lower and farther apart when idle.
-- [ ] Add distinct poses for mining, sword swing, bow draw, eating, placing blocks, rowing boat, holding torch, and interacting.
-- [ ] Mirror first-person actions in the third-person player model so another camera angle reads the same action.
+- [x] Add a first-person "rest pose" where hands sit lower and farther apart when idle.
+- [x] Add distinct poses for mining, sword swing, bow draw, eating, placing blocks, rowing boat, holding torch, and interacting.
+- [x] Mirror first-person actions in the third-person player model so another camera angle reads the same action.
 
 ### 3. Enemy attack animations
-- [ ] Hollowling bite/claw: crouch wind-up, shoulders pull back, arms snap forward, head lunges, 500ms recovery.
-- [ ] Hollowling chase: forward lean, uneven arm swing, head bob synced to step rhythm.
-- [ ] Hollowling flee: turn torso away but head glances back, arms raised defensively.
+- [x] Hollowling bite/claw: crouch wind-up, shoulders pull back, arms snap forward, head lunges, 500ms recovery.
+- [x] Hollowling chase: forward lean, uneven arm swing, head bob synced to step rhythm.
+- [x] Hollowling flee: turn torso away but head glances back, arms raised defensively.
 - [ ] Surveyor Echo swipe: map-panel flicker, arm blade extension, side slash arc.
-- [ ] Hollow Surveyor charge: compass halo narrows, body leans forward, panels trail behind, dust/energy trail follows.
-- [ ] Hollow Surveyor slam: hover upward, arms lock, warning ring expands on ground, slam impact creates shockwave ring.
-- [ ] Hollow Surveyor teleport: panels fold inward, silhouette collapses to a point, reappears with reversed panel unfold.
-- [ ] Add animation state fields to agent data: `animState`, `animT`, `attackWindup`, `attackActive`, `attackRecovery`, `lastAttackType`.
-- [ ] Damage should only happen during the active-hit window, never at the start of wind-up.
+- [x] Hollow Surveyor charge: compass halo narrows, body leans forward, panels trail behind, dust/energy trail follows.
+- [x] Hollow Surveyor slam: hover upward, arms lock, warning ring expands on ground, slam impact creates shockwave ring.
+- [x] Hollow Surveyor teleport: panels fold inward, silhouette collapses to a point, reappears with reversed panel unfold.
+- [x] Add animation state fields to agent data: `animState`, `animT`, `attackWindup`, `attackActive`, `attackRecovery`, `lastAttackType`.
+- [x] Damage should only happen during the active-hit window, never at the start of wind-up.
 
 ### 4. Better item models
 - [ ] Replace generic item cubes with `makeItemModel(type)`.
@@ -740,12 +749,39 @@ Do not add more systems before this sprint lands. The game already has enough sy
 - The HUD is visible in `?test` mode and can be opted into through `localStorage.iw_dev_stats = '1'`.
 - Embedded QA target is now **113/113**.
 
+### Session 15 — `v0.8.1` "Death & Scroll"
+- **Mouse scroll wheel** now cycles the hotbar selection (up/down).
+- **Death drops fixed**: items dropped on death no longer auto-pickup while the death screen is showing — they wait at the death spot for the player to return.
+- **Double-strike bug fixed**: holding LMB on a monster no longer calls `strikeMonster` twice per frame (both `updateMining` and the fallback attack loop were doing it).
+- **More lag fixes**: `footprintColumns` replaced `Set<string>` with numeric key object to avoid per-frame string garbage (5-6 calls × 9 strings each per physics frame). Reused Vector3 pool (`_fwd`, `_rgt`, `_move`) in `updatePlayer` instead of creating 3 new Vector3s every frame.
+- Embedded QA still **114/114**.
+
+### Session 14 — `v0.8.0` "Performance Tuning"
+- Fixed 5 sources of occasional lag spikes identified via automated profiling:
+  - **String garbage**: Replaced `LIQUID_TYPES.has(String(b))` with a precomputed `IS_LIQUID[b]` boolean array (~10 hot paths, no per-frame string allocations).
+  - **chunkKey string creation**: Changed `chunkKey` from string concatenation to numeric bit-packed key `(cx<<16)|(cz&0xffff)`. Updated all unpacking sites to use bit-shifts instead of `.split(',').map(Number)`.
+  - **Particle allocation storm**: Added an object pool (`particlePool`) so `spawnParticle` reuses meshes instead of `new THREE.Mesh` + `new THREE.MeshBasicMaterial` per particle. Dead particles are returned to the pool instead of disposed.
+  - **Full scene matrix update**: Replaced `scene.updateMatrixWorld(true)` in `raycast` with targeted `agent.updateWorldMatrix(true,false)` per agent — avoids traversing hundreds of chunk meshes per frame.
+  - **Array.splice in hot paths**: Replaced `splice(i,1)` with swap-remove (`pop` + overwrite) in `updateDamageNumbers`, `updateBossTelegraphs`, `removeDropletItem`, `removeAgent`, and `updateParticles`.
+  - **Chunk mesh rebuild spike**: Spread chunk `buildChunkMesh` across frames (8 per frame via `chunkBuildQueue`) instead of rebuilding all ~200 chunks at once when crossing a chunk boundary.
+- LMB/RMB now strictly follows the crosshair: `updateMining` re-raycasts every frame so looking away cancels mining (or switches to whatever the crosshair hits — enemy, foliage, or new block).
+- First-person rest pose: hands sit lower and farther apart when idle.
+- Action poses for mining, sword, bow, torch, eating, boat, and default equipped states.
+- Third-person player model mirrors first-person action poses (arm rotation matching each held-item type).
+- Reduced RMB placement cooldown from 250ms → 120ms for snappier response.
+- High-level chase animation: arm swing, head bob synced to gait.
+- High-level flee animation: body faces away, head looks back, arms raised defensively.
+- Boss charge telegraph: camera halo narrows, body leans forward, panels angle back, dust trail.
+- Boss slam telegraph: arms lock upward, warning ring expands, shockwave on impact.
+- Boss teleport animation: panels fold in, aura collapses, brief shrink, reappear with unfold particle burst.
+- Embedded QA target is now **114/114**.
+
 ---
 
 ## Testing
 
 ### Manual QA
-Open the game with `?test` URL parameter to run the embedded self-test suite (113 tests). Results appear in a green/red panel.
+Open the game with `?test` URL parameter to run the embedded self-test suite (114 tests). Results appear in a green/red panel.
 
 ### Headless self-test runner
 ```bash
