@@ -1,6 +1,6 @@
 # Inner Wilds — 3D Voxel Survival/Adventure Game
 
-**Current version: `v0.9.0` — "Better Item Models"** (shown in main menu and top-right HUD badge).
+**Current version: `v0.10.0` — "Combat Readability"** (shown in main menu and top-right HUD badge).
 
 A browser-based 3D voxel survival/adventure game built with **Three.js** (CDN, no bundler). Single-file HTML, fully playable in Chrome/Firefox.
 
@@ -130,7 +130,7 @@ renderFrame():
 
 ---
 
-## Current Production Slice — `v0.9.0` "Better Item Models"
+## Current Production Slice — `v0.10.0` "Combat Readability"
 
 This slice continues the post-v0.6.0 art pass. The goal is to make the cel-shaded art direction feel complete, not like terrain, characters, items, pickups, sound effects, and music belong to different games.
 
@@ -143,7 +143,7 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 - [x] **Enemy attack animations**: Add wind-up, active-hit, and recovery animation states for Hollowlings, Surveyor Echoes, and the Hollow Surveyor. Attacks must telegraph before damage happens.
 - [x] **Better item models**: Replace plain cubes/boxes with readable low-poly models for sword, bow, pickaxe, axe, torch, bedroll, boat item, food, potions, ore, amber, mirror shards, and waystone fragments.
 - [x] **Held-item consistency**: First-person held item, third-person held item, dropped item, inventory preview, and crafting result should use the same model factory per item type.
-- [ ] **Combat readability**: Add enemy wind-up glow, slash arcs, impact freeze for 80-120ms on heavy hits, hit spark particles, and boss attack warning rings.
+- [x] **Combat readability**: Add enemy wind-up glow, slash arcs, impact freeze for 80-120ms on heavy hits, hit spark particles, and boss attack warning rings.
 - [ ] **Performance guardrail**: All new models must be low-poly, material-shared, geometry-pooled, and capped to preserve 60 FPS on mid-range hardware.
 
 ### Shipped In v0.7.0
@@ -748,6 +748,14 @@ Do not add more systems before this sprint lands. The game already has enough sy
 - Added a lightweight dev/test stats HUD for FPS, frame time, draw calls, triangle count, chunks, particles, drops, geometries, and textures.
 - The HUD is visible in `?test` mode and can be opted into through `localStorage.iw_dev_stats = '1'`.
 - Embedded QA target is now **113/113**.
+
+### Session 17 — `v0.10.0` "Combat Readability"
+- **Impact freeze**: 80ms time dilation on every monster hit (`dt *= 0.06`), giving satisfying hitstop.
+- **Slash arcs**: Sprite-based crescent arc appears in front of the camera on each swing — fades out over 0.32s with a scale-up pop.
+- **Hit sparks**: Directional particle burst at the hit point — particles fly toward the player→enemy vector, brighter color (gold) for higher-damage weapons.
+- **Enemy wind-up glow**: Hollowling aura rings pulse and brighten during the 0.36s telegraph phase, then dim after the strike lands.
+- New embedded QA test verifies `impactFreeze`, `spawnSlashArc`, `updateSlashArcs`, and `makeSlashTexture` are wired and functional.
+- Embedded QA target is now **116/116**.
 
 ### Session 16 — `v0.9.0` "Better Item Models"
 - Replaced all remaining default-box item models with distinctive low-poly 3D shapes:

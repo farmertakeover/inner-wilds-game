@@ -327,8 +327,8 @@ const WORLD_SEED = 27183;
 const BASE_MOUSE_SENS = 0.00165;
 const MAX_PARTICLES = 120;
 const TICK_RATE = 1/60;
-const GAME_VERSION = 'v0.9.0';
-const GAME_VERSION_NAME = 'Better Item Models';
+const GAME_VERSION = 'v0.10.0';
+const GAME_VERSION_NAME = 'Combat Readability';
 
 const BLOCK_TYPES = {
   0:{name:'air',solid:false,transparent:true},
@@ -2603,6 +2603,14 @@ function updateAgents(dt){
         data.attackAnimT=(data.attackAnimT||0)+dt;
         if(data.attackAnimT>total){data.attackAnimT=0;data.attackHit=false;data.attackWarned=false}
         if(!data.attackWarned){data.attackWarned=true;agent.rotation.x=-.18;spawnParticle(agent.position.clone().add(new THREE.Vector3(0,BLOCK*1.7,0)),0xff4f9a,5,1.4)}
+        // Wind-up glow: pulse aura rings during telegraph phase
+        if(parts?.aura&&data.attackAnimT<wind){
+          const glowT=data.attackAnimT/wind;
+          parts.aura.forEach((ring,i)=>{
+            ring.material.opacity=.15+glowT*.7;
+            ring.scale.setScalar(.6+glowT*.5);
+          });
+        }
         if(data.attackAnimT>=wind&&!data.attackHit){
           data.attackHit=true;
           agent.rotation.x=0;
@@ -2610,11 +2618,17 @@ function updateAgents(dt){
           spawnDamageNumber(player.pos.clone().add(new THREE.Vector3(0,BLOCK*2,0)),7,'#ff5d7a');
           spawnParticle(player.pos.clone().add(new THREE.Vector3(0,BLOCK*1.2,0)),0xff5d7a,8,1.8);
         }
+        if(data.attackAnimT>=wind&&parts?.aura){
+          parts.aura.forEach((ring,i)=>{
+            ring.material.opacity=.08;
+            ring.scale.setScalar(.3);
+          });
+        }
       } else {
         agent.position.x=data.home.x+Math.sin(data.t*.7)*.55;
         if(d>0.01)agent.rotation.y=Math.atan2(toPlayer.x,toPlayer.z);
       }
-      if(nextState!=='attacking'){data.attackAnimT=0;data.attackHit=false;data.attackWarned=false}
+      if(nextState!=='attacking'){data.attackAnimT=0;data.attackHit=false;data.attackWarned=false;if(parts?.aura)parts.aura.forEach(r=>{r.material.opacity=.08;r.scale.setScalar(.3)})}
       // Reset arm rotations if not in a specific state that overrides them
       if(nextState!=='fleeing'&&nextState!=='chasing'&&nextState!=='attacking'&&parts?.arms){
         parts.arms.forEach(arm=>{arm.rotation.x=arm.userData.baseRotX||0;arm.rotation.z=arm.userData.baseRotZ||0});
@@ -3243,6 +3257,50 @@ function setMouseSensitivity(percent){
 }
 
 const particlePool=[];
+let impactFreeze=0;
+// Slash arc sprite pool for weapon swing visual
+let slashArcPool=[],slashArcs=[];
+
+function makeSlashTexture(){
+  const c=document.createElement('canvas');
+  c.width=128;c.height=128;
+  const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,128,128);
+  ctx.strokeStyle='rgba(255,238,187,0.85)';
+  ctx.lineWidth=10;ctx.lineCap='round';
+  ctx.beginPath();ctx.arc(64,68,44,-.85*Math.PI,.85*Math.PI);ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.4)';
+  ctx.lineWidth=4;
+  ctx.beginPath();ctx.arc(64,68,40,-.75*Math.PI,.75*Math.PI);ctx.stroke();
+  const tex=new THREE.CanvasTexture(c);tex.needsUpdate=true;return tex;
+}
+const _slashTex=makeSlashTexture();
+
+function spawnSlashArc(){
+  let sprite;
+  if(slashArcPool.length){
+    sprite=slashArcPool.pop();
+  } else {
+    sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:_slashTex,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false}));
+  }
+  const dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  sprite.position.copy(camera.position).add(dir.multiplyScalar(BLOCK*2)).add(new THREE.Vector3(0,BLOCK*.4,0));
+  sprite.scale.set(BLOCK*2.8,BLOCK*2.8,1);
+  sprite.material.opacity=.7;
+  sprite.userData.age=0;sprite.userData.life=.32;
+  scene.add(sprite);slashArcs.push(sprite);
+}
+
+function updateSlashArcs(dt){
+  for(let i=slashArcs.length-1;i>=0;i--){
+    const s=slashArcs[i];s.userData.age+=dt;
+    const t=s.userData.age/s.userData.life;
+    if(t>=1){scene.remove(s);slashArcPool.push(s);slashArcs.splice(i,1);continue}
+    s.material.opacity=.7*(1-t);
+    s.scale.setScalar(1+t*.5);
+  }
+}
+
 function allocParticle(position,color,spread=2.5){
   let mesh;
   if(particlePool.length){
@@ -3822,10 +3880,18 @@ function strikeMonster(agent){
   player.noise=Math.min(100,player.noise+5);
   player.swingCooldown=.32;
   triggerHandSwing(1);
+  impactFreeze=.08;
+  spawnSlashArc();
   // Knockback away from the player.
   const kb=agent.position.clone().sub(player.pos);kb.y=0;
   if(kb.lengthSq()>0.0001){kb.normalize().multiplyScalar(BLOCK*3.4);data.knockback.copy(kb)}
-  spawnParticle(agent.position.clone().add(new THREE.Vector3(0,BLOCK*.6,0)),0xd97d8d,18,4);
+  // Directional hit sparks: burst toward the player → enemy direction
+  const sparkColor=weaponDamage(weapon)>=6?0xffcc55:0xffddaa;
+  const hitPos=agent.position.clone().add(new THREE.Vector3(0,BLOCK*.6,0));
+  for(let i=0;i<14;i++){
+    const p=allocParticle(hitPos,sparkColor,3.5);
+    if(p){p.userData.velocity.y=Math.abs(p.userData.velocity.y)*1.8;const s=Math.sign(kb.x||1);p.userData.velocity.x*=s*1.6;p.userData.velocity.z*=1.4}
+  }
   spawnDamageNumber(agent.position,damage,'#ff9dae');
   playHitSound();
   if(data.hp<=0&&data.dying<=0){
@@ -4383,7 +4449,8 @@ function updateCamera(){
 let hudUpdateTimer=0;
 function animate(){
   requestAnimationFrame(animate);
-  const dt=Math.min(clock.getDelta(),0.05);
+  let dt=Math.min(clock.getDelta(),0.05);
+  if(impactFreeze>0){impactFreeze-=dt*14;if(impactFreeze>0)dt*=.06}
   hudUpdateTimer+=dt;
   
   const inGameplay=state.started&&ui.start.classList.contains('hidden')&&!ui.notes.classList.contains('open')&&!showCrafting&&!ui.inventoryPanel.classList.contains('open');
@@ -4408,6 +4475,7 @@ function animate(){
     updateAgents(dt);
     updateParticles(dt);
     updateBossTelegraphs(dt);
+    updateSlashArcs(dt);
     updateDroppedItems(dt);
     updateDamageNumbers(dt);
     updateHands(dt);
@@ -4433,6 +4501,7 @@ function animate(){
     updateWater(dt);
     updateParticles(dt);
     updateBossTelegraphs(dt);
+    updateSlashArcs(dt);
     updateDroppedItems(dt);
     updateHands(dt);
     updateHeldTorchLight();
@@ -5158,6 +5227,18 @@ if(new URLSearchParams(location.search).has('test')){
           disposeObject(model);
         }
         check('New item models have non-trivial 3D shapes',itemShapeOk,itemDetails.join('; '));
+      }
+      // Combat readability: verify impact freeze, slash arc, and enemy wind-up glow functions exist
+      {
+        const hasFreeze=typeof impactFreeze==='number';
+        const hasSlashFunc=typeof spawnSlashArc==='function';
+        const hasUpdateSlash=typeof updateSlashArcs==='function';
+        const hasSlashTex=typeof makeSlashTexture==='function';
+        let texOk=false;
+        try{const tex=makeSlashTexture();texOk=tex instanceof THREE.CanvasTexture}catch(e){}
+        const combatReadable=hasFreeze&&hasSlashFunc&&hasUpdateSlash&&texOk;
+        const combatDetails=[hasFreeze?'freeze':'noFreeze',hasSlashFunc?'slashFn':'noSlashFn',hasUpdateSlash?'updSlash':'noUpdSlash',texOk?'texOk':'texFail'].join(' ');
+        check('Combat readability: impact freeze, slash arc, and wind-up glow wired',combatReadable,combatDetails);
       }
     }catch(e){check('Test completed',false,e.message)}
     const passed=results.filter(r=>r.pass).length;
