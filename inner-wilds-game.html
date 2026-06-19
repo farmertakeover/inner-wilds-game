@@ -70,6 +70,7 @@ canvas{display:block}
 .dev-stats{position:absolute;right:12px;bottom:78px;min-width:190px;padding:8px 10px;border-radius:10px;color:var(--muted);font:600 .68rem/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}.dev-stats[hidden]{display:none}.dev-stats strong{display:block;margin-bottom:3px;color:var(--teal);font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}.dev-stats b{color:var(--gold);font-weight:700}
 .death-compass{position:absolute;right:12px;top:140px;width:72px;height:72px;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s}.death-compass.show{opacity:1;transform:translateY(0)}.death-compass[hidden]{display:none}.compass-ring{position:absolute;inset:0;border:2px solid rgba(242,201,109,.4);border-radius:50%;background:radial-gradient(circle at center,rgba(255,240,200,.12),rgba(14,20,28,.85));box-shadow:inset 0 0 12px rgba(0,0,0,.5),0 0 8px rgba(242,201,109,.2)}.compass-needle{position:absolute;left:50%;top:50%;width:2px;height:28px;margin-left:-1px;margin-top:-28px;background:linear-gradient(180deg,#ffd24a,#c9a84a);border-radius:1px;transform-origin:bottom center;box-shadow:0 0 6px #ffd24a}.compass-dist{position:absolute;bottom:-20px;left:50%;width:max-content;transform:translateX(-50%);font:600 .6rem ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffd24a;text-shadow:0 0 4px rgba(0,0,0,.8);white-space:nowrap}
 .death-meter{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);width:200px;pointer-events:none;opacity:0;transition:opacity .3s}.death-meter.show{opacity:1}.death-meter[hidden]{display:none}.death-meter-fill{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}.death-meter-fill::after{content:"";display:block;height:100%;border-radius:3px;transition:width .3s ease,background .3s}.death-meter-text{text-align:center;margin-top:2px;font:700 .68rem ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold);text-shadow:0 0 4px rgba(0,0,0,.8)}
+.time-notify{position:absolute;left:16px;bottom:140px;max-width:260px;padding:10px 14px;border:2px solid rgba(154,121,227,.7);border-left:4px solid #9a79e3;border-radius:4px 12px 12px 4px;color:var(--ink);background:linear-gradient(135deg,rgba(35,10,60,.92),rgba(20,8,40,.95));box-shadow:0 8px 30px rgba(100,60,180,.35),inset 0 0 12px rgba(154,121,227,.1);font-size:.82rem;line-height:1.4;opacity:0;transform:translateY(8px);transition:opacity .35s,transform .35s;z-index:8;pointer-events:none}.time-notify.show{opacity:1;transform:translateY(0)}
 .start{position:fixed;inset:0;display:grid;place-items:center;padding:16px;pointer-events:auto;background:radial-gradient(circle at 50% 30%,rgba(154,121,227,.15),rgba(9,13,20,.88) 55%);z-index:10}
 .start.hidden{display:none}
 .start-card{width:min(760px,100%);padding:24px;border-radius:22px 6px 22px 6px}
@@ -1139,16 +1140,13 @@ function toggleBoat(){
     }
     player.boating=false;toast('You step out of the boat.');return;
   }
-  if(!isPlayerInWater()){toast('Launch the boat while standing in water, or place one and press E.');return}
   player.boating=true;
-  toast('Boat launched. Sprint to skim between islands.');
+  toast(isPlayerInWater()?'Boat launched. Sprint to skim between islands.':'Boat on land — movement is slow but steady.');
 }
 function mountPlacedBoat(boat){
   if(!boat||boat.userData.placedType!==70)return false;
-  const water=waterSurfaceAt(boat.position.x,boat.position.z);
-  if(water===-Infinity||water<groundYAt(boat.position.x,boat.position.z)){toast('Push the boat onto water first.');return false}
   player.boatEntity=boat;player.boating=true;boat.visible=false;
-  player.pos.set(boat.position.x,Math.max(water,boat.position.y)+BLOCK*.18,boat.position.z);
+  player.pos.set(boat.position.x,boat.position.y+BLOCK*.18,boat.position.z);
   toast('You climb into the boat.');return true;
 }
 function updateBoat(){
@@ -1595,7 +1593,7 @@ function setContextPrompt(html){
 }
 function promptChip(key,text){return `<kbd>${key}</kbd><span>${text}</span>`}
 function timePendantPromptParts(){
-  if(!isHoldingTimePendant())return[];
+  if(!isHoldingTimePendant()||timeState.menuOpen)return[];
   return timeState.active?[promptChip('RMB','Resume Time')]:[promptChip('RMB','Stop Time'),promptChip('T','Time Menu')];
 }
 function updateContextPrompt(inGameplay=true){
@@ -3549,8 +3547,15 @@ window.addEventListener('mousemove',e=>{
 });
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
 function startRightClickAction(){
+  if(timeState.menuOpen)return;
   const sel=player.hotbar[player.selectedSlot];
-  if(sel===80){timeState.active?requestDeactivateTimeMode():activateTimeMode('stopped');player.primaryRightHeld=false;return}
+  if(sel===80){
+    if(timeState.active){requestDeactivateTimeMode();player.primaryRightHeld=false;return;}
+    if(timeState.lastAction==='stopped'){activateTimeMode('stopped');player.primaryRightHeld=false;return;}
+    timeState.pendingAction=timeState.lastAction;
+    timeNotify('TIME — right-click again to confirm');
+    player.primaryRightHeld=false;return;
+  }
   if(sel===23){player.primaryRightHeld=true;return}
   placeSelected();
   player.placeCooldown=.18;
@@ -3694,6 +3699,7 @@ const timeState={
   overlay:null,
   pendingAction:null,
   anomalyCooldown:0,
+  lastAction:'stopped',
 };
 function takeTimeSnapshot(){
   if(timeState.mode==='fastforward')return;
@@ -3854,17 +3860,25 @@ function spawnTimeConsequences(){
     spawnParticle(player.pos.clone().add(new THREE.Vector3(0,BLOCK,0)),0xff0000,15,3);
   }
 }
+function timeNotify(text){
+  const el=document.createElement('div');
+  el.className='time-notify';
+  el.textContent=text;
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),400)},3500);
+}
 function showTimeMenu(){
-  if(timeState.menuOpen)return;
+  if(timeState.menuOpen){timeState.menuOpen=false;hideDialogue();return;}
   timeState.menuOpen=true;
   const actions=[
-    {label:'Stop Time',action:()=>{timeState.menuOpen=false;hideDialogue();activateTimeMode('stopped')}},
-    {label:'Rewind 5s',action:()=>{timeState.menuOpen=false;hideDialogue();timeState.pendingAction='rewind5'}},
-    {label:'Rewind 30s',action:()=>{timeState.menuOpen=false;hideDialogue();timeState.pendingAction='rewind30'}},
-    {label:'Rewind 60s',action:()=>{timeState.menuOpen=false;hideDialogue();timeState.pendingAction='rewind60'}},
-    {label:'Forward 5s',action:()=>{timeState.menuOpen=false;hideDialogue();timeState.pendingAction='forward5'}},
-    {label:'Forward 30s',action:()=>{timeState.menuOpen=false;hideDialogue();timeState.pendingAction='forward30'}},
-    {label:'Forward 60s',action:()=>{timeState.menuOpen=false;hideDialogue();timeState.pendingAction='forward60'}},
+    {label:'Stop Time',action:()=>{timeState.menuOpen=false;timeState.lastAction='stopped';activateTimeMode('stopped');timeNotify('TIME STOP — right-click to resume')}},
+    {label:'Rewind 5s',action:()=>{timeState.menuOpen=false;timeState.lastAction='rewind5';timeState.pendingAction='rewind5';timeNotify('REWIND 5s — right-click to confirm')}},
+    {label:'Rewind 30s',action:()=>{timeState.menuOpen=false;timeState.lastAction='rewind30';timeState.pendingAction='rewind30';timeNotify('REWIND 30s — right-click to confirm')}},
+    {label:'Rewind 60s',action:()=>{timeState.menuOpen=false;timeState.lastAction='rewind60';timeState.pendingAction='rewind60';timeNotify('REWIND 60s — right-click to confirm')}},
+    {label:'Forward 5s',action:()=>{timeState.menuOpen=false;timeState.lastAction='forward5';timeState.pendingAction='forward5';timeNotify('FAST FORWARD 5s — right-click to confirm')}},
+    {label:'Forward 30s',action:()=>{timeState.menuOpen=false;timeState.lastAction='forward30';timeState.pendingAction='forward30';timeNotify('FAST FORWARD 30s — right-click to confirm')}},
+    {label:'Forward 60s',action:()=>{timeState.menuOpen=false;timeState.lastAction='forward60';timeState.pendingAction='forward60';timeNotify('FAST FORWARD 60s — right-click to confirm')}},
     {label:'Cancel',action:()=>{timeState.menuOpen=false;hideDialogue()}},
   ];
   showDialogue('Time Pendant — Choose',`Temporal residue: ${timeState.consequenceLevel}%`,actions);
