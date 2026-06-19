@@ -71,6 +71,7 @@ canvas{display:block}
 .death-compass{position:absolute;right:12px;top:140px;width:72px;height:72px;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s}.death-compass.show{opacity:1;transform:translateY(0)}.death-compass[hidden]{display:none}.compass-ring{position:absolute;inset:0;border:2px solid rgba(242,201,109,.4);border-radius:50%;background:radial-gradient(circle at center,rgba(255,240,200,.12),rgba(14,20,28,.85));box-shadow:inset 0 0 12px rgba(0,0,0,.5),0 0 8px rgba(242,201,109,.2)}.compass-needle{position:absolute;left:50%;top:50%;width:2px;height:28px;margin-left:-1px;margin-top:-28px;background:linear-gradient(180deg,#ffd24a,#c9a84a);border-radius:1px;transform-origin:bottom center;box-shadow:0 0 6px #ffd24a}.compass-dist{position:absolute;bottom:-20px;left:50%;width:max-content;transform:translateX(-50%);font:600 .6rem ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffd24a;text-shadow:0 0 4px rgba(0,0,0,.8);white-space:nowrap}
 .death-meter{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);width:200px;pointer-events:none;opacity:0;transition:opacity .3s}.death-meter.show{opacity:1}.death-meter[hidden]{display:none}.death-meter-fill{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}.death-meter-fill::after{content:"";display:block;height:100%;border-radius:3px;transition:width .3s ease,background .3s}.death-meter-text{text-align:center;margin-top:2px;font:700 .68rem ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--gold);text-shadow:0 0 4px rgba(0,0,0,.8)}
 .time-notify{position:absolute;left:16px;bottom:140px;max-width:260px;padding:10px 14px;border:2px solid rgba(154,121,227,.7);border-left:4px solid #9a79e3;border-radius:4px 12px 12px 4px;color:var(--ink);background:linear-gradient(135deg,rgba(35,10,60,.92),rgba(20,8,40,.95));box-shadow:0 8px 30px rgba(100,60,180,.35),inset 0 0 12px rgba(154,121,227,.1);font-size:.82rem;line-height:1.4;opacity:0;transform:translateY(8px);transition:opacity .35s,transform .35s;z-index:8;pointer-events:none}.time-notify.show{opacity:1;transform:translateY(0)}
+.bow-charge{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);width:120px;height:8px;border:1px solid rgba(242,201,109,.5);border-radius:4px;background:rgba(0,0,0,.5);overflow:hidden;opacity:0;transition:opacity .2s}.bow-charge.show{opacity:1}.bow-charge-fill{height:100%;width:0%;border-radius:3px;background:linear-gradient(90deg,#f2c96d,#ffd24a);transition:width .05s linear}
 .start{position:fixed;inset:0;display:grid;place-items:center;padding:16px;pointer-events:auto;background:radial-gradient(circle at 50% 30%,rgba(154,121,227,.15),rgba(9,13,20,.88) 55%);z-index:10}
 .start.hidden{display:none}
 .start-card{width:min(760px,100%);padding:24px;border-radius:22px 6px 22px 6px}
@@ -248,6 +249,9 @@ canvas{display:block}
   <div class="death-meter" id="deathMeter" hidden>
     <div class="death-meter-fill"></div>
     <div class="death-meter-text">--</div>
+  </div>
+  <div class="bow-charge" id="bowCharge" hidden>
+    <div class="bow-charge-fill"></div>
   </div>
   <div class="version-badge" id="versionBadge"></div>
   <div class="dev-stats glass" id="devStats" hidden></div>
@@ -1180,14 +1184,12 @@ function updateHandItem(){
     model.visible=true;
     model.position.set(isTorchItem(type)?0.01:(bt.weapon?0.02:0),bt.food?0.02:0,bt.weapon?0.08:0.06);
     model.rotation.set(bt.weapon&&type!==23?-0.5:(isTorchItem(type)?0.28:(bt.tool?-0.35:0.05)),type===23?0.25:0,bt.tool?0.25:0);
-    if(type===23&&model.userData.bowString){
-      const d=player.bowDraw;
-      const str=model.userData.bowString;
+    if(type===23){
+      const d=player.bowCharge;
       const arrow=model.userData.bowArrow;
-      if(str)str.scale.x=1-d*.6;
       if(arrow){
-        arrow.position.set(.02-d*.35,0,.08+d*.15);
-        arrow.visible=d>.05;
+        arrow.position.set(.02,0,.08+d*.5);
+        arrow.visible=player.bowCharging||d>.02;
       }
     }
   }
@@ -1225,7 +1227,7 @@ function updateHands(dt){
   } else {
     // Action-specific idle poses
     if(bow){
-      const d=draw;
+      const d=player.bowCharging?player.bowCharge:player.bowDraw;
       rx=.30-d*1.2; ry=.18+d*.04; rz=-.32-d*.23; rrx=-.8-d*.5; rry=.15; rrz=.05;
       lx=-.28-d*.77; ly=.14+d*.04; lz=-.28-d*.27; lrx=-.6-d*.4; lry=-.1; lrz=-.03;
       ix=.26-d*.14; iy=(.12+d*.04)+BLOCK*.05; iz=(-.32-d*.18)-BLOCK*.06; irx=.35-d*.07; iry=.15; irz=0;
@@ -1482,6 +1484,8 @@ const player={
   boating:false,
   boatEntity:null,
   bowDraw:0,
+  bowCharge:0,
+  bowCharging:false,
   primaryHeld:false,
   primaryRightHeld:false,
   placeCooldown:0,
@@ -1561,6 +1565,7 @@ const ui={
   deathScreen:document.getElementById('deathScreen'),deathReason:document.getElementById('deathReason'),respawnBtn:document.getElementById('respawnBtn'),
   deathCompass:document.getElementById('deathCompass'),
   deathMeter:document.getElementById('deathMeter'),
+  bowCharge:document.getElementById('bowCharge'),
 };
 
 function setLoadingProgress(pct,label){
@@ -1684,6 +1689,16 @@ function updateHudFeedback(inGameplay=true){
     } else {
       compass.classList.remove('show');compass.hidden=true;
       if(meter){meter.classList.remove('show');meter.hidden=true}
+    }
+  }
+  const bowMeter=ui.bowCharge;
+  if(bowMeter){
+    if(player.bowCharging&&player.hotbar[player.selectedSlot]===23){
+      const fill=bowMeter.querySelector('.bow-charge-fill');
+      if(fill)fill.style.width=(player.bowCharge*100).toFixed(0)+'%';
+      bowMeter.classList.add('show');bowMeter.hidden=false;
+    } else {
+      bowMeter.classList.remove('show');bowMeter.hidden=true;
     }
   }
 }
@@ -3556,7 +3571,7 @@ function startRightClickAction(){
     timeNotify('TIME — right-click again to confirm');
     player.primaryRightHeld=false;return;
   }
-  if(sel===23){player.primaryRightHeld=true;return}
+  if(sel===23){return}
   placeSelected();
   player.placeCooldown=.18;
   player.primaryRightHeld=true;
@@ -3566,7 +3581,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   if(!showCrafting&&!ui.notes.classList.contains('open')&&ui.start.classList.contains('hidden'))requestGamePointerLock();
   if(e.button===0){
     player.primaryHeld=true;
-    if(player.hotbar[player.selectedSlot]===23&&player.primaryRightHeld){fireBow();player.primaryHeld=false;return}
+    // Bow: start charging on LMB press
+    if(player.hotbar[player.selectedSlot]===23){player.bowCharging=true;return}
     // Combat reaches slightly farther than mining so creatures are reliably hit.
     const hit=raycast(interactionReach(6));
     if(hit&&hit.agent){
@@ -3580,7 +3596,10 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   }
 });
 window.addEventListener('pointerup',e=>{
-  if(e.button===0){player.primaryHeld=false;resetMining()}
+  if(e.button===0){
+    if(player.bowCharging){fireBow(player.bowCharge);player.bowCharging=false}
+    player.primaryHeld=false;resetMining()
+  }
   if(e.button===2)player.primaryRightHeld=false;
 });
 
@@ -4494,13 +4513,18 @@ function dropAgentLoot(agent){
   }
 }
 
-function fireBow(){
-  if(player.hotbar[player.selectedSlot]!==23||!player.primaryRightHeld||player.swingCooldown>0)return false;
-  player.swingCooldown=.48;triggerHandSwing(.9);player.noise=Math.min(100,player.noise+3);
+function fireBow(charge){
+  if(player.hotbar[player.selectedSlot]!==23||player.swingCooldown>0)return false;
+  player.swingCooldown=.35;triggerHandSwing(.7);player.noise=Math.min(100,player.noise+3);
   const from=camera.position.clone(),dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-  spawnArrowProjectile(from,dir,weaponDamage(23)+2);
+  const power=.3+charge*.7;
+  const damage=Math.round((weaponDamage(23)+2)*power);
+  const speed=BLOCK*10+charge*BLOCK*20;
+  spawnArrowProjectile(from,dir,damage,speed);
   spawnParticle(from.clone().addScaledVector(dir,BLOCK*.7),0xd8d2c4,4,.5);
   playMineChip();
+  player.bowCharge=0;
+  player.bowCharging=false;
   return true;
 }
 const damageNumbers=[];
@@ -4546,12 +4570,13 @@ function removeArrowProjectile(a){
   const i=arrowProjectiles.indexOf(a);if(i!==-1){const last=arrowProjectiles.pop();if(i<arrowProjectiles.length)arrowProjectiles[i]=last}
   scene.remove(a);disposeObject(a);
 }
-function spawnArrowProjectile(origin,dir,damage=weaponDamage(23)+2){
+function spawnArrowProjectile(origin,dir,damage=weaponDamage(23)+2,speed=BLOCK*24){
   const mesh=makeArrowProjectileMesh(),d=dir.clone().normalize();
   mesh.position.copy(origin).addScaledVector(d,BLOCK*.62);
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d);
-  mesh.userData.velocity=d.multiplyScalar(BLOCK*24);
+  mesh.userData.velocity=d.multiplyScalar(speed);
   mesh.userData.age=0;mesh.userData.damage=damage;
+  mesh.userData.trail=[];
   scene.add(mesh);arrowProjectiles.push(mesh);return mesh;
 }
 function pointSegmentDistance(p,a,b){
@@ -4579,6 +4604,7 @@ function updateArrowProjectiles(dt,frozen=false){
     d.velocity.y-=BLOCK*1.8*dt;
     a.position.addScaledVector(d.velocity,dt);
     if(d.velocity.lengthSq()>0.001)a.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.velocity.clone().normalize());
+    if(d.age>.05&&Math.random()<.6)spawnParticle(prev.clone(),0xd8d2c4,1,.2);
     let hitAgent=null;
     for(const agent of agents){
       const data=agent.userData.agent;if(!data||data.dying>0||data.type==='npc'||data.type==='waystone')continue;
@@ -5199,6 +5225,11 @@ function animate(){
     else if(action==='forward60'){timeState.fastForwardUntil=performance.now()+60000;activateTimeMode('fastforward')}
   }
   
+  // === Bow charge ===
+  if(player.bowCharging&&player.hotbar[player.selectedSlot]===23){
+    player.bowCharge=Math.min(1,player.bowCharge+dt*1.2);
+  }
+
   // === Snapshot every 0.25s ===
   timeState.snapshotTimer+=dt;
   if(timeState.snapshotTimer>=timeState.snapshotInterval&&timeState.mode!=='fastforward'){
