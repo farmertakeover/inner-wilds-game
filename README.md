@@ -20,16 +20,16 @@ python3 -m http.server 8080 --bind 127.0.0.1
 | Key | Action |
 |---|---|
 | WASD | Move / Sprint (hold shift) |
-| Space | Jump (hold while moving = auto-jump) |
-| Left-click | Mine block / Attack creature |
-| Right-click | Place selected item / Eat food / Drink potion / Aim bow / Stop or resume time with Time Pendant selected |
+| Space | Jump (hold while moving = auto-jump) · Exit boat while boating |
+| Left-click | Mine block / Attack creature / Hold + release to fire bow |
+| Right-click | Place selected item / Eat food / Drink potion / Use bound Time Pendant power |
 | E | Interact (talk to NPCs, activate) |
 | T | Open Time Pendant menu when the pendant is selected |
 | F | Center breath (restore resolve) |
 | Tab | Toggle inventory + Journal/Quests |
 | C | Toggle crafting |
 | 1-9 | Select hotbar slot |
-| Mouse wheel | Cycle hotbar selection |
+| Mouse wheel | Scroll up = move right on hotbar; scroll down = move left |
 | Q | Drop the selected stack |
 | M | Main menu (New Game / Continue / Settings) |
 | V | Toggle 1st/3rd person |
@@ -77,7 +77,7 @@ Ancient monoliths hidden across the islands. Restoring them (by studying the Car
 
 ### Overview
 
-`inner-wilds-game.html` is ~4600 lines, all in one file. No build step. Three.js loaded from CDN (`<script type="module">`).
+`inner-wilds-game.html` is ~6900 lines, all in one file. No build step. Three.js loaded from CDN (`<script type="module">`).
 
 ### Key Module-Scoped Variables
 - `camera` / `scene` / `renderer` — standard Three.js, camera is added to scene
@@ -122,10 +122,83 @@ renderFrame():
 - **Dropped items**: Physics (gravity + ground collision), 10s lifetime, pickup on contact
 - **Boat**: Craftable portable placeable item; can be nudged, placed on sea surface, ridden with `E`, and picked back up
 - **Sleep**: Bedroll is a portable placeable item; interact with a placed bedroll to sleep
-- **Bow**: RMB aims; LMB fires physical arrows. During Time Stop, arrows hang in mid-air and resume when time returns.
-- **Time Pendant**: Time Stop/Rewind/Fast-Forward/Anomaly framework with selected-device gating and temporal residue consequences
+- **Bow**: Hold LMB to draw, release LMB to fire physical arrows. During Time Stop, arrows hang in mid-air and resume when time returns; RMB does nothing for bows.
+- **Time Pendant**: Time Stop, hold-to-size Rewind/Forward, Time Blink, Anchor/Return, Anomaly framework, named temporal debt tiers, timeline overlays, death-retained pendant behavior, and Time Wraith consequences
 - **Crafting**: 27+ recipes, recipe discovery toasts
+- **Notifications**: General toasts, pickup feed entries, and Time Pendant messages share a non-overlapping bottom-left stack
 - **AI**: Hollowling state machine (IDLE → CHASING → ATTACKING → FLEEING), Surveyor Echo minion AI, animal idle wander
+
+---
+
+## Engine Strategy — Dual Track: WebGPU Now, Godot Later
+
+### Problem
+Browser performance is jittery. The game needs real GPU headroom to ramp time travel complexity (more agents, more particles, more VFX during rewind/stop). The current Three.js/WebGL path hits CPU bottlenecks on chunk meshing, particle updates, and snapshot comparison.
+
+### Decision: Two Parallel Tracks
+
+**Track 1 — WebGPU (active, current work):** Move rendering and meshing to WebGPU compute shaders while keeping the JS game logic, UI, and save system. This is the fastest path to near-native GPU performance with zero install friction.
+
+**Track 2 — Godot 4 (future, if needed):** Full engine port for console/mobile native builds. Only pursued if WebGPU hits a hard wall or console certification is required.
+
+### Track 1 — WebGPU
+
+WebGPU gives compute shaders, Vulkan/Metal/DX12 backends, and shared CPU/GPU memory — all in the browser. No install, same URL-sharing as today.
+
+| Priority | Task | Why |
+|---|---|---|
+| 1 | **GPU chunk meshing** | Biggest jitter source. Move `buildChunkMesh()` to a compute shader — feed voxel buffer, get vertex buffer back. ~10x faster. |
+| 2 | **GPU particle system** | Particles become buffer updates, zero CPU cost. Time stop = stop updating buffer. |
+| 3 | **GPU snapshot comparison** | Compare voxel buffers in parallel on GPU for rewind restore. |
+| 4 | **WGSL shader generation** | AI generates WGSL compute shaders from existing JS meshing logic. |
+
+**Why WebGPU over custom Rust/C++ engine:**
+- Keeps browser zero-install advantage
+- AI generates WGSL well (similar to Rust/HLSL)
+- ~1 week to prototype vs 6+ months for custom engine
+- Your JS game logic (time powers, quests, UI) stays untouched
+- If WebGPU works, you ship from the browser. If it doesn't, you learned GPU programming and can port to Godot with that knowledge.
+
+**Risks:**
+- WebGPU debugging is harder than JS debugging
+- WGSL is new — smaller ecosystem than GLSL/HLSL
+- Some older GPUs may not support WebGPU (but all modern ones do)
+
+### Track 2 — Godot 4 (Future)
+
+Godot remains the fallback for native console/mobile builds. Porting order if WebGPU is insufficient:
+
+1. World generation (terrain, chunks, biomes)
+2. Player controller (movement, collision, camera)
+3. Time powers (snapshot, rewind, stop, blink, anchor)
+4. UI (hotbar, inventory, journal, notifications)
+5. Save/load
+
+Estimated effort with AI help: ~2 weeks for a playable prototype.
+
+### Godot Web Export Gate
+Before any real port, make a tiny Godot 4 spike and prove web export first.
+
+| Gate | Pass Criteria |
+|---|---|
+| Tooling | Godot 4 editor/headless binary installed and matching export templates installed |
+| Export | Minimal 3D scene exports to Web without manual patching |
+| Browser | Export runs in Chromium and Firefox from a static local server |
+| Rendering | Compatibility/WebGL 2 path works with a toon-lit voxel-ish test scene |
+| Input | Pointer lock/camera capture works after a user click; hotbar wheel input works |
+| Audio | Audio starts only after an explicit click/key press and does not error in browser console |
+| Persistence | A `user://` save survives reload in browser storage |
+| Performance | 60 FPS target is plausible with a representative chunk/foliage/particle stress scene |
+
+### Current Status
+- **WebGPU**: Prototype in progress. Chunk meshing compute shader is the first target.
+- **Godot**: No local Godot binary installed. Port deferred until WebGPU track is evaluated.
+
+### Source Notes
+- WebGPU spec and tutorials: https://www.w3.org/TR/webgpu/
+- WGSL language reference: https://www.w3.org/TR/Wgsl/
+- Godot web export: https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_web.html
+- Godot export templates required: https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html#export-templates
 
 ---
 
@@ -244,31 +317,65 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 
 ### Shipped In v0.16.0
 - [x] **Persistent player builds across updates**: `blockEdits` journals mined/placed voxel edits and replays them over regenerated chunks on load. Your builds persist while untouched terrain still receives new update-generation logic.
-- [x] **Pickup notifications moved to the side only**: Removed duplicate center pickup toasts. Item pickup feedback now uses the right-side art feed exclusively.
+- [x] **Pickup notifications moved to the left side only**: Removed duplicate center pickup toasts. Item pickup feedback now uses the left-side art feed exclusively.
 - [x] **Boat physicality**: Placed boats can be nudged by the player, float to sea level, save their moved position, and can be ridden with `E` once pushed onto water.
 - [x] **Rolled-out bedroll placement**: Inventory bedroll stays rolled; placed bedroll is now an unrolled sleep mat with pillow, straps, and end roll.
-- [x] **Bow interaction**: RMB aims the bow, LMB fires a physical projectile, and the first-person/third-person aim pose reflects the drawn stance.
+- [x] **Bow interaction**: LMB hold draws the bow, LMB release fires a physical projectile, and the first-person/third-person pose reflects the drawn stance.
 - [x] **Temporal arrows**: Arrows fired during Time Stop freeze in mid-air and resume their trajectory when time restarts.
 - [x] **Time Pendant bug fixes**: Sleeping is blocked while time is stopped; resume dialogue closes correctly; time can only be stopped/resumed while the pendant is selected.
 - [x] **Time Pendant controls in context prompt**: Holding the pendant surfaces `RMB Stop Time`, `RMB Resume Time`, and `T Time Menu` alongside block prompts.
 - [x] **Model parity pass**: Bow and pickaxe models now better match the new icon silhouettes.
-- [x] Embedded QA (137/137): block-edit persistence, right-side pickup feed, time resume/sleep gating, frozen arrows, bow projectile spawn, and stopped-time player cooldowns.
+- [x] Embedded QA (137/137): block-edit persistence, pickup feed, time resume/sleep gating, frozen arrows, bow projectile spawn, and stopped-time player cooldowns.
 
 ### Shipped In v0.17.0
 - [x] **Nerfed hunger drain**: Base drain reduced ~50%; sprint/water multipliers softened so food management feels natural, not frantic.
 - [x] **Berry bushes**: New block type (16) generates in small clusters on grassy terrain; harvest for 2–3 berries each.
-- [x] **Death Compass** (item 81): Crafted from 3 iron ingots + 1 glow apple + 1 mirror shard. Tracks your last death coordinates and displays a compass UI with needle pointing toward your grave and distance readout.
+- [x] **Death Compass** (item 81): Crafted from 3 iron ingots + 1 glow apple + 1 mirror shard. Tracks your last death coordinates; the held compass model needle points toward your grave without a HUD meter.
 - [x] Embedded QA (140/140): hunger nerf verification, berry bush generation, death compass item/recipe/model/UI/tracking.
+
+### Implemented After v0.17.0
+- [x] **Time Pendant RMB binding**: Time menu choices now bind the selected power to RMB without triggering immediately; context prompts show the selected power name.
+- [x] **Hold-based Rewind/Forward**: Rewind and Forward are single menu options; holding RMB chooses the amount of time, releasing casts it.
+- [x] **Extra time powers**: Added Time Blink and Anchor/Return as expert mobility/recovery powers.
+- [x] **Death rewind safety**: The Time Pendant is retained on death unless manually dropped, and an active rewind hold can snap through the death screen back to a pre-death snapshot.
+- [x] **Death Compass HUD removal**: Removed the on-screen `Death: Xm` meter/red line; direction now lives on the held model needle.
+- [x] **Temporal debt meter**: Holding the pendant shows Static/Rifted/Fractured/Hunted/Paradox tiers with a compact HUD meter and tier-specific risk text.
+- [x] **Time Wraiths**: High temporal debt can spawn translucent hunters that keep moving while time is stopped.
+- [x] **Timeline overlays**: Snapshot ghost silhouettes are hidden during passive pendant holding and only appear during active rewind/forward time playback.
+- [x] **Bow control correction**: Bow now uses LMB hold/release only, does not trigger melee while charging, starts weaker, and takes longer to reach full power.
+- [x] **Hotbar wheel direction**: Scroll up moves right on the hotbar; scroll down moves left.
+- [x] **Unified notifications**: General toasts, pickup feed entries, and Time Pendant messages now stack bottom-left and push older messages upward instead of overlapping.
+- [x] **Time VFX performance pass**: Time ripples/portals are capped, sky tears are throttled, and heavy consequence bursts use lower geometry/particle counts to reduce lag after repeated time powers.
+- [x] **Dynamic waystone guidance**: Once the waystone quest is active, the journal points to the next unlit waystone with progress, name, direction, and distance/sea-crossing hint.
+- [x] **Item clarity labels**: Hotbar, inventory, crafting grid/result, and recipe rows now expose readable names via title/ARIA labels while keeping the icon-first visual layout.
+- [x] **Hold Forward correction**: Forward now runs while RMB is held and stops immediately on release, matching Rewind's hold-based control model.
+- [x] Embedded QA (155/155): hold-based time menu, death-retained pendant rewind, compass model needle/no HUD, temporal debt tiers, Time Wraith stopped-time movement, timeline overlays, bow RMB/melee ignored, unified bottom-left notifications, dynamic waystone guidance, item labels, hold-forward release behavior, Space boat exit (ghost fixed), rewind world-edit reversal, night-fall banner, time power audio cues, anchor context prompt, timeState save/load persistence, boat ghost hidden after exit.
+
+### Current Focus — Get Golden Before Engine Migration
+- [x] **Core loop guidance pass**: New Game → gather basic blocks/berries → craft tools/boat/bow → find Cartographer/waystone direction now has dynamic journal guidance for the next unlit waystone.
+- [x] **Item clarity baseline**: Hotbar, inventory, crafting result, and recipe rows expose readable item names for tooltip/screen-reader clarity; visual/model parity remains an ongoing playtest check.
+- [x] **Time power feel baseline**: Rewind and Forward both run while RMB is held and stop on release; Time Blink, Anchor/Return, death rewind, Wraith pressure, and temporal debt remain covered by QA guards and playtest feel checks.
+- [x] **Night-fall notification**: Banner warns when night approaches so the player can prepare.
+- [x] **Time power audio**: Distinct sounds for Stop, Blink, Anchor, Rewind, and Wraith using existing SFX pipeline.
+- [x] **Anchor context prompt**: "RMB Return to Anchor" shown when anchor is active.
+- [x] **Time state persistence**: Time power state (lastAction, debt, anchor) saved/loaded with game.
+- [x] **Boat exit on Space**: Press Space to exit boat immediately.
+- [x] **Rewind reverses world edits**: Block edits, placed foliage, and save journal all roll back.
+- [ ] **Golden-loop playtest**: Survive night → recover from death → return to goal still needs a manual end-to-end playtest pass.
+- [ ] **No more broad systems before playtest**: Defer alternate universes, new bosses, more biomes, multiplayer, and full engine migration until this loop is fun and stable.
+- [ ] **WebGPU chunk meshing prototype**: Build compute shader that converts voxel buffer to mesh vertices on GPU. Target: eliminate main-thread meshing jitter.
+- [ ] **WebGPU particle system**: Move particle updates to GPU buffers. Target: zero CPU cost for time-stop particle freeze.
+- [ ] **Evaluate WebGPU vs Godot**: After prototype, decide if browser performance is sufficient or if native port is needed.
 
 ### Future Time Pendant Expansion
 - [ ] **Self-meeting paradoxes**: Rewind leaves a past-self echo that repeats the player's prior path. Touching it causes a paradox event; helping it complete the old path creates a reward instead.
-- [ ] **Time Wraiths**: High residue spawns hunters that exist outside paused time. They do not freeze, can phase through player-built blocks, and punish reckless time abuse.
+- [x] **Time Wraiths**: High temporal debt spawns hunters that exist outside paused time. They do not freeze, phase through normal block constraints while chasing, and punish reckless time abuse.
 - [ ] **Era travel**: The pendant can jump the player into Dawn Era, Ruin Era, Hollow Era, or Far Future variants of the same island. Same coordinates, different biome state, enemy ecology, loot tables, and sky.
 - [ ] **Alternate universes**: Rare anomaly tears create parallel shards where choices diverged: flooded Survey Isle, overgrown Survey Isle, iron-industrial Survey Isle, empty-dead Survey Isle. Each shard has one resource or secret impossible in the prime world.
-- [ ] **Timeline overlays**: While holding the pendant, ghost silhouettes show where blocks, mobs, and the player existed 5/30/60 seconds ago.
+- [x] **Timeline overlays**: During active rewind/forward playback, ghost silhouettes show where the player existed 5/30/60 seconds ago; passive pendant holding stays visually clean.
 - [ ] **Paradox crafting**: Some recipes require materials from mutually exclusive timelines, forcing the player to carry items across eras without collapsing the loop.
-- [ ] **Frozen projectile puzzles**: Fire arrows, thrown items, or falling blocks during Time Stop, then resume time to trigger distant switches, break crystals, or chain combat openings.
-- [ ] **Temporal debt meter**: Replace flat residue with named thresholds: Static, Rifted, Fractured, Hunted, Paradox. Each tier adds systemic risks and new powers.
+- [x] **Frozen projectile puzzles**: Fire arrows during Time Stop, then resume time to release the shot path for ranged combat/puzzle setups.
+- [x] **Temporal debt meter**: Replaced flat residue with named thresholds: Static, Rifted, Fractured, Hunted, Paradox. Higher tiers drive anomaly and Time Wraith risk.
 - [ ] **Wormhole routing**: Stable wormholes become buildable shortcuts once the player learns to anchor them with chart-light and mirror shards.
 - [ ] **Save-slot timeline identity**: Each save slot can become a canonical universe. Future systems can let a player visit echoes of other save slots as alternate timelines.
 - [ ] **Boss-scale time design**: A future boss can split into versions from three eras, requiring the player to pause one, rewind another, and bait the future version into damaging the past version.
@@ -282,7 +389,7 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 - [ ] **Biome encounter tables**: Each island should have distinct ambient entities, hostile mobs, rare spawns, and night escalation patterns.
 
 ### Acceptance Criteria
-- [ ] QA suite passes with no JS errors.
+- [x] QA suite passes with no JS errors.
 - [ ] A fresh New Game shows no duplicate/ghost limbs in first person.
 - [ ] Continue from a saved file loads into terrain, not a blue/empty view.
 - [ ] All model-like objects use toon materials or intentionally documented exceptions.
@@ -291,6 +398,78 @@ Make the entire game read as one cohesive cel-shaded adventure: terrain, charact
 - [ ] Hotbar, dropped item, held item, and crafting preview all match for at least 15 core items.
 - [ ] SFX and music reinforce the pastel cel-shaded adventure tone without becoming harsh, muddy, or horror-like.
 - [ ] Frame time stays below 16.7ms average at render distance 3 on the target browser.
+
+---
+
+## Future Massive Expansion — Fusion, Body Swap & Alternate Realities
+
+> This is a long‑term expansion roadmap for transforming Inner Wilds into a dimension‑hopping entity‑fusion sandbox. Not part of the current sprint — planned for post‑v1.0.
+
+### Fusion Mechanic
+- [ ] **Fuse with any entity**: Craftable "Fusion Anchor" item. When activated on a creature/NPC/monster, the player fuses with it.
+- [ ] **Model takeover**: Player model becomes the fused entity's model.
+- [ ] **Attack pattern swap**: Attack moves, speed, reach, and damage type change to match the fused creature.
+- [ ] **Ability inheritance**: Fused creature's special abilities (flight, swimming, burrowing, ranged attack, shield, etc.) become the player's.
+- [ ] **Visual fusion indicator**: Player retains a subtle aura/particle effect showing the original pendant/tether, so identity is readable.
+- [ ] **Status/stat merge**: HP, hunger, temperature, and resolve merge with the creature's natural stats.
+- [ ] **De-fusion**: Using the Fusion Anchor again on yourself or an un-fuse station reverts to original form.
+
+### Body Swap Mechanic
+- [ ] **Craftable "Soul Swapper"**: Special late‑game item (recipe: pendant shard + mirror heart + void crystal).
+- [ ] **Target any entity**: Activate the Soul Swapper on any creature, NPC, monster, or even another player/AI agent.
+- [ ] **You become the target**: Camera and controls shift to the target's body. Player model becomes that entity's model.
+- [ ] **AI takes your old body**: Your original body becomes an autonomous AI agent controlled by the game. It wanders, defends itself, and uses your old inventory.
+- [ ] **Inventory stays behind**: Only the Soul Swapper moves to the new body's hotbar. All other items, blocks, and resources remain in the old body.
+- [ ] **Old body is hostile or neutral**: The AI‑controlled old body may be friendly, indifferent, or hostile depending on the entity you swapped into.
+- [ ] **Swap back**: Use the Soul Swapper on your old body to return. The AI returns to its original entity.
+- [ ] **Perma‑death risk**: If your old body dies while you're in a swapped form, the items are lost forever (or dropped at death site).
+
+### New Entity Classes
+
+#### Mythological Creatures
+- [ ] **Phoenix**: Fire bird, flight, healing aura, resurrects once after death.
+- [ ] **Kraken**: Sea titan, tentacle grab, whirlpool, deep‑sea movement.
+- [ ] **Golem**: Stone construct, slow but massive damage, immune to knockback, can break any block.
+- [ ] **Wisp**: Ethereal light being, phases through blocks, heals allies, reveals hidden paths.
+- [ ] **Dragon**: Flying, fire breath, scales reduce damage, rare island guardian spawn.
+
+#### Paranormal Entities
+- [ ] **Spectre**: Ghost that spawns at high temporal debt; can possess other creatures. Only visible during time stop.
+- [ ] **Poltergeist**: Invisible until it attacks; throws blocks and items at the player; can be detected by shimmer in the air.
+- [ ] **Void Walker**: Spawns from deep underground; teleports behind the player; slows time around itself.
+- [ ] **Echo**: A memory echo of a dead creature that repeats its last actions; can be fused with for unique ghost‑phase abilities.
+
+#### Aliens & Extradimensional Beings
+- [ ] **Void Drifter**: Alien entity from between dimensions; floats and glitches; swaps position with the player.
+- [ ] **Star‑born**: Crystalline being from the moon; shoots light beams; splits into smaller shards on death.
+- [ ] **Phase Shifter**: Exists in two dimensions at once; attacks have a delayed echo that hits 1s later in the same spot.
+- [ ] **Observer**: Silent alien that only moves when not looked at; studying it unlocks new crafting recipes.
+
+### Alternate Realities & Dimensions
+- [ ] **Mirror Dimension**: Enter via rare mirror surface anomalies. Everything is flipped left‑right. Enemies have mirrored attack patterns. Loot is mirrored (torches become cold lights, food becomes poison).
+- [ ] **Void Realm**: Fall below the world or trigger a time anomaly. Pitch black except for entity glows. Gravity is lower. Time is frozen. Only entities that exist outside time (Wraiths, Spectres) appear here.
+- [ ] **Overgrown Era**: The same island centuries later. Jungle covers everything. New hostile plant creatures. Rare ancient technology buried under vines.
+- [ ] **Ash Era**: Post‑cataclysm version. The sky is orange, the sea is black. Only fire‑adapted creatures survive. Loot is scarce but powerful.
+- [ ] **Frozen Era**: The islands were pulled into polar orbit. Everything is ice‑covered. Movement is slippery. Creatures have ice armour. Heat sources are precious.
+
+### Parallel Universe Player Versions
+- [ ] **Prime Self**: The current player — baseline.
+- [ ] **Corrupted Self**: Evil version that hunts you across dimensions. Uses your own tactics. Drops a unique "Corrupted Shard" that unlocks dark fusion abilities.
+- [ ] **Echo Self**: Ghost of a past playthrough (loaded from an old save slot). Repeats your old movements as an NPC. Can be swapped with via Soul Swapper for a memory walk.
+- [ ] **Void Self**: Alien version that never returned from a void jump. Attacks with tentacle arms. Can be fused with for void‑phase movement.
+- [ ] **Titan Self**: Giant version found only in the Titan Dimension (celestial‑scale map). You are block‑size compared to normal entities being miniature.
+
+### Colossal Titans
+- [ ] **Stone Titan**: Half‑island, half‑creature found sleeping in the sea. Wake it to trigger a floating boss arena on its back.
+- [ ] **Storm Titan**: Flying cloud‑giant that circles the archipelago. Lightning strikes mark its location. Ride the storm to board it.
+- [ ] **Void Titan**: Dwells in the space between islands if you fall too far. Gigantic tentacle arms that can be climbed like terrain.
+- [ ] **Clockwork Titan**: An ancient machine buried inside the main island. Its gears are dungeons. Activating it reshapes the island.
+
+### Fusion / Body Swap Progression Gate
+- [ ] **Fusion Anchor**: Crafted mid‑game (iron + amber + mirror shard + pendant fragment). Basic fusion with small creatures.
+- [ ] **Greater Fusion Anchor**: Upgrade requiring boss drops. Enables fusion with large creatures and minor mythologicals.
+- [ ] **Soul Swapper**: Late‑game craft (greater anchor + void crystal + time anomaly core). Enables full body swap.
+- [ ] **Dimension Key**: Ultra‑late‑game. Opens portals to alternate realities. Crafted from materials gathered across all eras.
 
 ### Expert Recommendation
 Do not add more systems before this sprint lands. The game already has enough systems to feel rich; the next jump in perceived quality comes from art consistency, animation readability, and interaction polish. A player will forgive simple mechanics if every action looks intentional. They will not forgive beautiful terrain paired with placeholder character/item models.
@@ -469,7 +648,7 @@ Do not add more systems before this sprint lands. The game already has enough sy
 - [ ] **Dialogue**: Portrait art for speakers, typewriter text animation, branching dialogue tree
 - [ ] **Boss health bar**: Prominent top-center bar during boss fight with phase indicators
 - [ ] **Damage numbers**: Animated floating text with damage type color, crit indication, healing in green
-- [ ] **Toast system**: Stacking toasts with slide-in animation, category icons
+- [x] **Toast system**: Stacking bottom-left notifications with slide-in animation across general, pickup, and time messages
 - [ ] **Notification tray**: Inbox for quest updates, discoveries, system messages
 - [ ] **Settings**: FOV slider, brightness/gamma, mouse sensitivity separate X/Y, volume mixers (master/music/sfx/ambient), render distance (2-12), quality preset (low/medium/high/ultra), key binding remapping, accessibility options
 - [ ] **Save slot UI**: Per-slot screenshot preview, world age, play time, delete confirmation
@@ -599,7 +778,7 @@ Do not add more systems before this sprint lands. The game already has enough sy
 - [ ] **30 FPS on low-end laptops**: Reduced particle count, 4 chunk distance, simple water, no dynamic shadows
 - [ ] **120 FPS on high-end desktops**: Max settings, 12 chunk distance, shadows, bloom, volumetric fog
 - [ ] **Detect capability**: Auto-detect GPU/driver capability and set quality preset
-- [ ] **Dynamic resolution**: Scale render resolution down when framerate drops below target
+- [x] **Dynamic resolution**: Scale render resolution down when framerate drops below target
 - [ ] **Progressive loading**: Stream chunks nearest-first, render placeholder fog for unloaded areas
 
 #### 20. Network & Asset Loading
@@ -694,6 +873,7 @@ Do not add more systems before this sprint lands. The game already has enough sy
 - [ ] **PWA**: Service worker for offline play, install prompt, asset caching
 - [ ] **WebGL fallback**: WebGL1 support for older devices, auto-detect and degrade gracefully
 - [ ] **CDN versioning**: Three.js version pinned with integrity hash for security and reproducibility
+- [ ] **Godot web-export spike**: Before any engine migration, prove a tiny Godot 4 scene exports to Web, runs in Chromium/Firefox, captures mouse input, plays audio after a user gesture, persists a save, and meets a representative FPS budget
 
 #### 30. Modding & Extensibility
 - [ ] **Data-driven blocks**: Block types loaded from JSON, not hardcoded
@@ -919,10 +1099,10 @@ Do not add more systems before this sprint lands. The game already has enough sy
 
 ### Session 28 — `v0.16.0` "Temporal Arrows & Persistence"
 - Added **block edit persistence**: player-mined/placed voxel edits are saved as a compact journal and replayed over regenerated chunks, preserving builds across updates without freezing the whole world generator.
-- Moved pickup feedback to the right-side art feed only; removed duplicate center pickup toasts.
+- Moved pickup feedback to the side art feed only; removed duplicate center pickup toasts.
 - Added physical **boat nudging** and placed-boat riding via **E** when the boat is on water; moved boat positions are saved.
 - Placed bedroll now renders as a rolled-out mat while inventory/drop bedroll remains rolled.
-- Bow now uses **RMB aim + LMB fire** and spawns physical arrows instead of instant hits.
+- Bow was moved to physical projectiles instead of instant hits; current controls use **LMB hold/release** for draw and fire.
 - **Temporal arrows**: arrows fired during Time Stop hang in mid-air and resume flight when time resumes.
 - Time Pendant fixes: sleep is blocked during stopped time, resume dialogue closes correctly, and pause/resume requires the pendant selected.
 - Added context prompts for Time Pendant controls and documented a major future roadmap for self-paradoxes, time wraiths, era travel, and alternate universes.
@@ -931,8 +1111,45 @@ Do not add more systems before this sprint lands. The game already has enough sy
 ### Session 29 — `v0.17.0` "Berry Bushes & Death Compass"
 - Nerfed **hunger drain** by ~50%: base drain 0.38/60s (was ~0.75), sprint 1.42/60s (was ~2.8); survival feels paced, not punishing.
 - Added **berry bushes** (block 16): generate in small clusters on grassy terrain; harvest for 2–3 berries each.
-- Added **Death Compass** (item 81, recipe: 3 iron ingots + 1 glow apple + 1 mirror): tracks last death position, shows compass UI with needle + distance when held.
+- Added **Death Compass** (item 81, recipe: 3 iron ingots + 1 glow apple + 1 mirror): tracks last death position; current implementation points the held model needle at the death spot without an on-screen meter.
 - Embedded QA target is now **140/140**.
+
+### Session 30 — post-`v0.17.0` "Temporal Debt & Wraiths"
+- Time Pendant menu now binds powers to RMB without immediate activation; Rewind/Forward are hold-duration powers, with Time Blink and Anchor/Return added as expert tools.
+- Added named **temporal debt** tiers and a compact HUD meter while holding the pendant.
+- Added **Time Wraiths** that can spawn from high debt and continue hunting during Time Stop.
+- Added 5/30/60-second **timeline overlay ghosts** for active rewind/forward playback.
+- Corrected bow controls to **LMB hold/release only**; RMB is ignored for bows, bow charging no longer triggers melee, and tap shots are weaker.
+- Removed the Death Compass HUD meter/red line; the held compass model needle now carries the direction readout.
+- Time Pendant is retained through death unless manually dropped, and active rewind holds can rewind through the death message.
+- Embedded QA target is now **145/145**.
+
+### Session 31 — post-`v0.17.0` "Golden Loop Polish"
+- Mouse wheel direction now matches the requested hotbar feel: scroll up moves right, scroll down moves left.
+- General toasts, pickup notifications, and Time Pendant messages now share one bottom-left stack so messages do not overlap.
+- Time-effect VFX are throttled/capped: fewer portal/rift particles, lower-poly temporary rings, capped active ripples/portals, and throttled sky-tear overlays.
+- Waystone quest guidance now points to the next unlit waystone by name, direction, progress, and distance/across-sea hint.
+- Hotbar, inventory, crafting result, and recipe rows now expose readable item names through title/ARIA labels while preserving icon-first slots.
+- Hold Forward now fast-forwards only while RMB is held and stops on release, matching the hold-based Rewind model.
+- README now records the Godot strategy: keep Three.js for core-loop prototyping, but run a Godot 4 web-export spike before any engine migration.
+- Local Godot check: no Godot binary is installed in this workspace yet, so the web-export smoke test remains a pending gate.
+- Embedded QA is now **148/148**.
+
+### Session 32 — post-`v0.17.0` "Boat Exit, Rewind World Edits & Golden-Loop Audio"
+- Press **Space** to exit the boat immediately (previously required `E` or walking off).
+- **Time Rewind now reverses world edits**: block breaks/places, placed foliage (torches, boats, bedrolls, grass, flowers, bugs), and the `blockEdits` save journal all roll back to the snapshot time. The world truly returns to its past state.
+- Added `blockEditOriginals` map so the first value overwritten at each position is remembered, enabling clean revert without re-running terrain generation.
+- **Night-fall banner**: When night approaches, a "Night Falls" banner appears so the player can prepare.
+- **Time power audio cues**: Stop, Blink, Anchor, Rewind, and Wraith spawn each have distinct sounds using the existing SFX pipeline.
+- **Anchor context prompt**: When an anchor is set, the Time Pendant prompt shows "RMB Return to Anchor" instead of the default action.
+- **Time state persistence**: `lastAction`, `consequenceLevel`, and `temporalAnchor` are now saved/loaded with the game.
+- Embedded QA is now **154/154**.
+
+### Session 33 — post-`v0.17.0` "WebGPU Track Init"
+- Engine strategy updated to dual-track: WebGPU (active) + Godot 4 (future fallback).
+- WebGPU chosen for near-native GPU performance in browser with zero install friction.
+- Prototype target: GPU chunk meshing compute shader to eliminate main-thread jitter.
+- Godot port deferred until WebGPU track is evaluated.
 
 ### Session 16 — `v0.9.0` "Better Item Models"
 - Replaced all remaining default-box item models with distinctive low-poly 3D shapes:
@@ -987,19 +1204,15 @@ Do not add more systems before this sprint lands. The game already has enough sy
 ## Testing
 
 ### Manual QA
-Open the game with `?test` URL parameter to run the embedded self-test suite (122 tests). Results appear in a green/red panel.
+Open the game with `?test` URL parameter to run the embedded self-test suite (155 tests). Results appear in a green/red panel.
 
 ### Headless self-test runner
 ```bash
-# Requires puppeteer-core
-node tests/run-selftest.js
-CHROME_PATH=/path/to/chrome node tests/run-selftest.js
+node /tmp/opencode/nix-test/test-qa-visual.js
 ```
 
-### Automated Playthrough
-```bash
-GAME_URL="http://127.0.0.1:8080/inner-wilds-game.html" node tests/test-auto-play.js
-```
+### Profiling
+Open the game with `?perf` URL parameter to auto-start a new game with dev stats (U/C/R timing breakdown) and load-time profiling logged to console.
 
 ### Writing Tests
 Add tests to the `?test` block in the HTML file. Each test calls `check(label, condition)`.
